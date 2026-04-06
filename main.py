@@ -118,6 +118,13 @@ def add_item(bid, t, content=None, file_id=None):
 def del_item(iid):
     c = db(); c.execute("DELETE FROM content_items WHERE id=?", (iid,)); c.commit(); c.close()
 
+def upd_item_content(iid, content):
+    c = db(); c.execute("UPDATE content_items SET content=? WHERE id=?", (content, iid)); c.commit(); c.close()
+
+def get_item(iid):
+    r = db().execute("SELECT * FROM content_items WHERE id=?", (iid,)).fetchone()
+    return dict(r) if r else None
+
 # ── اكتشاف نوع المحتوى تلقائياً ─────────────────────────────────
 def detect_content(m):
     if m.photo:
@@ -181,30 +188,25 @@ def kb_edit_menu_btn(bid):
     return InlineKeyboardMarkup(rows)
 
 def kb_content_panel(bid):
-    """لوحة إدارة محتوى الزر: قائمة العناصر + إضافة + تغيير الاسم."""
+    """لوحة إدارة محتوى الزر."""
     items = get_items(bid)
-    rows = []
-    for item in items:
-        label = _item_label(item)
-        rows.append([
-            InlineKeyboardButton(label, callback_data="noop"),
-            InlineKeyboardButton("🗑", callback_data=f"ci_del_{item['id']}"),
-        ])
-    rows.append([InlineKeyboardButton("➕ إضافة محتوى", callback_data=f"ci_add_{bid}")])
     b = get_btn(bid)
-    rows.append([InlineKeyboardButton("✏️ تغيير الاسم",  callback_data=f"el_{bid}")])
-    rows.append([InlineKeyboardButton("🗑 حذف الزر",      callback_data=f"x_{bid}")])
+    rows = []
+    if items:
+        rows.append([InlineKeyboardButton("👁 عرض المحتوى", callback_data=f"ci_view_{bid}")])
+    rows.append([InlineKeyboardButton("➕ إضافة محتوى", callback_data=f"ci_add_{bid}")])
+    rows.append([InlineKeyboardButton("✏️ تغيير الاسم", callback_data=f"el_{bid}")])
+    rows.append([InlineKeyboardButton("🗑 حذف الزر",    callback_data=f"x_{bid}")])
     pid = b["parent_id"] if b else None
     rows.append([InlineKeyboardButton("🔙 رجوع", callback_data="m_r" if pid is None else f"m_{pid}")])
     return InlineKeyboardMarkup(rows)
 
-def _item_label(item):
-    icons = {"text": "📝", "photo": "🖼", "file": "📎", "video": "🎬", "audio": "🎵"}
-    icon = icons.get(item["type"], "📄")
-    snippet = (item.get("content") or "")[:20]
-    if item["type"] == "text":
-        return f"{icon} {snippet}" if snippet else icon
-    return f"{icon} {item['type']}"
+def kb_item_actions(iid):
+    """أزرار تحت كل عنصر محتوى عند العرض."""
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("✏️ تغيير الوصف", callback_data=f"ci_edit_{iid}"),
+        InlineKeyboardButton("🗑 حذف",          callback_data=f"ci_del_{iid}"),
+    ]])
 
 def kb_admins_inline():
     rows = []
@@ -309,6 +311,25 @@ async def on_message(update: Update, ctx):
                         f"📄 *{b['label']}*\n_{len(items)} عنصر_",
                         kb_content_panel(bid))
         await m.reply_text("✅ تمت الإضافة.", reply_markup=build_kb(uid, pid))
+        return
+
+    # ── انتظار وصف جديد لعنصر محتوى ─────────────────────────────
+    if state == "wait_item_desc":
+        if not m.text or m.text in SPECIAL_BTNS:
+            await m.reply_text("⚠️ أرسل نصاً للوصف."); return
+        iid = ctx.user_data.get("item_iid")
+        msg_id = ctx.user_data.get("item_msg_id")
+        upd_item_content(iid, m.text)
+        ctx.user_data.pop("state", None)
+        ctx.user_data.pop("item_iid", None)
+        ctx.user_data.pop("item_msg_id", None)
+        if msg_id:
+            try:
+                await ctx.bot.edit_message_reply_markup(chat_id=chat_id, message_id=msg_id,
+                                                        reply_markup=kb_item_actions(iid))
+            except Exception:
+                pass
+        await m.reply_text("✅ تم تحديث الوصف.", reply_markup=build_kb(uid, pid))
         return
 
     # ── انتظار اسم جديد للتعديل ───────────────────────────────────
@@ -467,17 +488,51 @@ async def cb_manage(update: Update, ctx):
         await q.edit_message_text("📤 أرسل المحتوى (نص، صورة، ملف، فيديو، صوت):",
                                   reply_markup=kb_cancel_inline()); return
 
-    # ── لوحة محتوى الزر: حذف عنصر ───────────────────────────────
+    # ── عرض عناصر الزر مع أزرار إدارة لكل عنصر ──────────────────
+    if d.startswith("ci_view_"):
+        bid = int(d[8:]); items = get_items(bid)
+        if not items:
+            return
+        for item in items:
+            t = item["type"]; fid = item.get("file_id"); cap = item.get("content") or ""
+            kb = kb_item_actions(item["id"])
+            if t == "text":
+                await q.message.reply_text(cap, reply_markup=kb)
+            elif t == "photo" and fid:
+                await q.message.reply_photo(fid, caption=cap, reply_markup=kb)
+            elif t == "file" and fid:
+                await q.message.reply_document(fid, caption=cap, reply_markup=kb)
+            elif t == "video" and fid:
+                await q.message.reply_video(fid, caption=cap, reply_markup=kb)
+            elif t == "audio" and fid:
+                await q.message.reply_audio(fid, caption=cap, reply_markup=kb)
+        return
+
+    # ── تغيير وصف عنصر ───────────────────────────────────────────
+    if d.startswith("ci_edit_"):
+        iid = int(d[8:])
+        ctx.user_data["state"] = "wait_item_desc"
+        ctx.user_data["item_iid"] = iid
+        ctx.user_data["item_msg_id"] = q.message.message_id
+        await q.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("❌ إلغاء", callback_data=f"ci_cancel_edit_{iid}")
+        ]]))
+        await q.message.reply_text("✏️ أرسل الوصف الجديد:"); return
+
+    # ── إلغاء تعديل وصف عنصر ─────────────────────────────────────
+    if d.startswith("ci_cancel_edit_"):
+        iid = int(d[15:])
+        ctx.user_data.pop("state", None)
+        ctx.user_data.pop("item_iid", None)
+        ctx.user_data.pop("item_msg_id", None)
+        await q.edit_message_reply_markup(reply_markup=kb_item_actions(iid)); return
+
+    # ── حذف عنصر من رسالته ────────────────────────────────────────
     if d.startswith("ci_del_"):
         iid = int(d[7:])
-        conn = db()
-        row = conn.execute("SELECT button_id FROM content_items WHERE id=?", (iid,)).fetchone()
-        conn.close()
-        if not row: return
-        bid = row[0]; del_item(iid)
-        b = get_btn(bid); items = get_items(bid)
-        await q.edit_message_text(f"📄 *{b['label']}*\n_{len(items)} عنصر_",
-                                  parse_mode="Markdown", reply_markup=kb_content_panel(bid)); return
+        del_item(iid)
+        await q.edit_message_reply_markup(reply_markup=None)
+        await q.answer("✅ تم الحذف.", show_alert=False); return
 
     # ── إدارة المشرفين ────────────────────────────────────────────
     if d == "aa":
