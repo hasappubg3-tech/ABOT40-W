@@ -555,7 +555,9 @@ async def cb_manage(update: Update, ctx):
         bid = int(d[2:]); b = get_btn(bid); ep = b["parent_id"] if b else None
         del_btn(bid)
         await q.edit_message_text("⚙️ *إدارة الأزرار*:", parse_mode="Markdown",
-                                  reply_markup=kb_manage(ep)); return
+                                  reply_markup=kb_manage(ep))
+        await q.message.reply_text("✅ تم الحذف.", reply_markup=build_kb(uid, pid))
+        return
 
     # ── إضافة بجانب زر (نفس السطر) ──────────────────────────────
     if d.startswith("add_same_"):
