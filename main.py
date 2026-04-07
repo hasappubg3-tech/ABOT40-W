@@ -14,7 +14,7 @@ GROQ_API_KEY   = os.environ.get("GROQ_API_KEY", "")
 DB = "data.db"
 
 GROQ_URL   = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "llama-3.1-8b-instant"
+GROQ_MODEL = "llama-3.3-70b-versatile"
 
 GEMINI_MODELS = [
     "gemini-2.5-flash",
@@ -911,6 +911,7 @@ async def process_ai_request(user_request: str, current_btns: list = None):
         if GROQ_API_KEY:
             try:
                 raw = await _call_groq(client, prompt)
+                logging.info(f"[AI] {raw[:800]}")
                 action, operations, del_idx = _parse_ai_response(raw)
                 return action, operations, del_idx, None
             except json.JSONDecodeError:
