@@ -12,6 +12,8 @@ BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GROQ_API_KEY   = os.environ.get("GROQ_API_KEY", "")
 DB = "data.db"
+MEDIA_DIR = "media"
+os.makedirs(MEDIA_DIR, exist_ok=True)
 
 GROQ_URL   = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL = "llama-3.3-70b-versatile"
@@ -61,11 +63,17 @@ def init_db():
                 type TEXT NOT NULL,
                 content TEXT,
                 file_id TEXT,
+                local_path TEXT,
                 ord INTEGER DEFAULT 0
             );
         """)
         try:
             c.execute("ALTER TABLE buttons ADD COLUMN new_row INTEGER DEFAULT 1")
+            c.commit()
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE content_items ADD COLUMN local_path TEXT")
             c.commit()
         except Exception:
             pass
@@ -175,12 +183,15 @@ def get_items(bid):
     return [dict(r) for r in db().execute(
         "SELECT * FROM content_items WHERE button_id=? ORDER BY ord,id", (bid,)).fetchall()]
 
-def add_item(bid, t, content=None, file_id=None):
+def add_item(bid, t, content=None, file_id=None, local_path=None):
     c = db(); cur = c.cursor()
     n = cur.execute("SELECT COALESCE(MAX(ord),0)+1 FROM content_items WHERE button_id=?", (bid,)).fetchone()[0]
-    cur.execute("INSERT INTO content_items(button_id,type,content,file_id,ord) VALUES(?,?,?,?,?)",
-                (bid, t, content, file_id, n))
+    cur.execute("INSERT INTO content_items(button_id,type,content,file_id,local_path,ord) VALUES(?,?,?,?,?,?)",
+                (bid, t, content, file_id, local_path, n))
     c.commit(); c.close()
+
+def upd_item_file_id(iid, file_id):
+    c = db(); c.execute("UPDATE content_items SET file_id=? WHERE id=?", (file_id, iid)); c.commit(); c.close()
 
 def del_item(iid):
     c = db(); c.execute("DELETE FROM content_items WHERE id=?", (iid,)); c.commit(); c.close()
@@ -207,6 +218,79 @@ def detect_content(m):
     if m.text:
         return "text", m.text, None
     return None, None, None
+
+async def download_and_save(bot, file_id: str, file_type: str) -> str | None:
+    try:
+        import uuid
+        ext_map = {"photo": "jpg", "video": "mp4", "audio": "mp3", "file": "bin"}
+        ext = ext_map.get(file_type, "bin")
+        filename = f"{MEDIA_DIR}/{file_type}_{uuid.uuid4().hex}.{ext}"
+        tg_file = await bot.get_file(file_id)
+        await tg_file.download_to_drive(filename)
+        return filename
+    except Exception as e:
+        logging.warning(f"فشل تحميل الملف محلياً: {e}")
+        return None
+
+async def send_file_item(target, item, reply_markup=None):
+    t = item["type"]
+    fid = item.get("file_id")
+    cap = item.get("content") or ""
+    lpath = item.get("local_path")
+    iid = item.get("id")
+    kwargs = {"caption": cap}
+    if reply_markup:
+        kwargs["reply_markup"] = reply_markup
+
+    async def _send_from_fid():
+        if t == "photo":
+            return await target.reply_photo(fid, **kwargs)
+        elif t == "file":
+            return await target.reply_document(fid, **kwargs)
+        elif t == "video":
+            return await target.reply_video(fid, **kwargs)
+        elif t == "audio":
+            return await target.reply_audio(fid, **kwargs)
+
+    async def _send_from_local():
+        if not lpath or not os.path.exists(lpath):
+            return None
+        with open(lpath, "rb") as f:
+            if t == "photo":
+                msg = await target.reply_photo(f, **kwargs)
+            elif t == "file":
+                msg = await target.reply_document(f, **kwargs)
+            elif t == "video":
+                msg = await target.reply_video(f, **kwargs)
+            elif t == "audio":
+                msg = await target.reply_audio(f, **kwargs)
+            else:
+                return None
+        new_fid = None
+        if msg:
+            if t == "photo" and msg.photo:
+                new_fid = msg.photo[-1].file_id
+            elif t == "file" and msg.document:
+                new_fid = msg.document.file_id
+            elif t == "video" and msg.video:
+                new_fid = msg.video.file_id
+            elif t == "audio" and msg.audio:
+                new_fid = msg.audio.file_id
+            if new_fid and iid:
+                upd_item_file_id(iid, new_fid)
+        return msg
+
+    if t == "text":
+        await target.reply_text(cap, **({"reply_markup": reply_markup} if reply_markup else {}))
+        return
+
+    if fid:
+        try:
+            await _send_from_fid()
+            return
+        except Exception:
+            pass
+    await _send_from_local()
 
 # ── بناء لوحة مفاتيح الرد ────────────────────────────────────────
 ICON = {"menu": "📂", "content": "📄"}
@@ -344,17 +428,7 @@ async def send_items(m, bid):
         await m.reply_text("📭 لا يوجد محتوى بعد.")
         return
     for item in items:
-        t = item["type"]; fid = item.get("file_id"); cap = item.get("content") or ""
-        if t == "text":
-            await m.reply_text(cap)
-        elif t == "photo" and fid:
-            await m.reply_photo(fid, caption=cap)
-        elif t == "file" and fid:
-            await m.reply_document(fid, caption=cap)
-        elif t == "video" and fid:
-            await m.reply_video(fid, caption=cap)
-        elif t == "audio" and fid:
-            await m.reply_audio(fid, caption=cap)
+        await send_file_item(m, item)
 
 # ── /start ────────────────────────────────────────────────────────
 async def cmd_start(update: Update, ctx):
@@ -415,7 +489,10 @@ async def on_message(update: Update, ctx):
             await m.reply_text("⚠️ أرسل نصاً أو صورة أو ملفاً أو فيديو أو صوتاً."); return
         if t == "text" and text in SPECIAL_BTNS:
             await m.reply_text("⚠️ أرسل نصاً صحيحاً."); return
-        add_item(bid, t, content, fid)
+        lpath = None
+        if fid:
+            lpath = await download_and_save(ctx.bot, fid, t)
+        add_item(bid, t, content, fid, lpath)
         ctx.user_data.pop("state", None); ctx.user_data.pop("item_bid", None)
         b = get_btn(bid)
         items = get_items(bid)
@@ -715,18 +792,7 @@ async def cb_manage(update: Update, ctx):
         if not items:
             return
         for item in items:
-            t = item["type"]; fid = item.get("file_id"); cap = item.get("content") or ""
-            kb = kb_item_actions(item["id"])
-            if t == "text":
-                await q.message.reply_text(cap, reply_markup=kb)
-            elif t == "photo" and fid:
-                await q.message.reply_photo(fid, caption=cap, reply_markup=kb)
-            elif t == "file" and fid:
-                await q.message.reply_document(fid, caption=cap, reply_markup=kb)
-            elif t == "video" and fid:
-                await q.message.reply_video(fid, caption=cap, reply_markup=kb)
-            elif t == "audio" and fid:
-                await q.message.reply_audio(fid, caption=cap, reply_markup=kb)
+            await send_file_item(q.message, item, reply_markup=kb_item_actions(item["id"]))
         return
 
     # ── تغيير وصف عنصر ───────────────────────────────────────────
