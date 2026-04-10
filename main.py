@@ -173,6 +173,12 @@ def init_db():
                 PRIMARY KEY (user_id, button_id)
             );
         """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS motivational_phrases (
+                id     INTEGER PRIMARY KEY AUTOINCREMENT,
+                phrase TEXT NOT NULL
+            );
+        """)
         c.commit()
 
 def is_admin(uid):
