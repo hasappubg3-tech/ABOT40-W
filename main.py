@@ -9,20 +9,23 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-GROQ_API_KEY   = os.environ.get("GROQ_API_KEY", "")
 DB = "data.db"
 MEDIA_DIR = "media"
 os.makedirs(MEDIA_DIR, exist_ok=True)
 
-GROQ_URL   = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "llama-3.3-70b-versatile"
+GEMINI_MODEL = "gemini-2.5-flash"
 
-GEMINI_MODELS = [
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
-]
+def _load_gemini_keys():
+    keys = []
+    for k in [
+        os.environ.get("GEMINI_API_KEY", ""),
+        *[os.environ.get(f"GEMINI_API_KEY_{i}", "") for i in range(1, 11)],
+    ]:
+        if k and k not in keys:
+            keys.append(k)
+    return keys
+
+GEMINI_KEYS = _load_gemini_keys()
 
 BTN_BACK   = "🔙 رجوع"
 BTN_ADD    = "➕ إضافة"
@@ -645,8 +648,8 @@ async def on_message(update: Update, ctx):
         if not request_text:
             await m.reply_text("💡 اكتب طلبك بعد النقطة. مثال:\n. أضف أزرار: خدماتنا، من نحن، تواصل معنا")
             return
-        if not GROQ_API_KEY and not GEMINI_API_KEY:
-            await m.reply_text("❌ لم يُعَيَّن أي مفتاح AI.")
+        if not GEMINI_KEYS:
+            await m.reply_text("❌ لم يُعَيَّن أي مفتاح Gemini API.")
             return
         # ── تطبيق الصور المخزنة ───────────────────────────────────
         if request_text in ("تطبيق", "تطبيق الصور"):
@@ -1149,16 +1152,16 @@ async def _download_image_base64(bot, file_id: str):
     return base64.b64encode(buf.read()).decode(), "image/jpeg"
 
 async def _call_gemini_vision(client: httpx.AsyncClient, prompt: str, images: list):
-    """يستدعي Gemini API مع الصور."""
+    """يستدعي Gemini Vision API مع تدوير المفاتيح تلقائياً."""
     parts = [{"text": prompt}]
     for img in images:
         parts.append({"inline_data": {"mime_type": img["mime"], "data": img["data"]}})
     payload = {"contents": [{"parts": parts}]}
-    for model in GEMINI_MODELS:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-        resp = await client.post(url, params={"key": GEMINI_API_KEY}, json=payload, timeout=60)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+    for key in GEMINI_KEYS:
+        resp = await client.post(url, params={"key": key}, json=payload, timeout=60)
         if resp.status_code in (429, 503):
-            logging.warning(f"Gemini Vision {model} unavailable ({resp.status_code}), trying next...")
+            logging.warning(f"Gemini Vision key ...{key[-6:]} rate-limited, trying next key...")
             continue
         resp.raise_for_status()
         return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
@@ -1167,7 +1170,7 @@ async def _call_gemini_vision(client: httpx.AsyncClient, prompt: str, images: li
 async def _process_image_batch(wait_msg, m, ctx, uid, pid, images: list, btn_type: str):
     """يحلّل مجموعة صور ويضيف الأزرار المستخرجة منها بالترتيب."""
     import re
-    if not GEMINI_API_KEY:
+    if not GEMINI_KEYS:
         await wait_msg.edit_text("❌ تحليل الصور يتطلب مفتاح Gemini API. أضف GEMINI_API_KEY في الإعدادات.")
         return
     all_added = []
@@ -1217,39 +1220,23 @@ async def _process_image_batch(wait_msg, m, ctx, uid, pid, images: list, btn_typ
     else:
         await wait_msg.edit_text("⚠️ لم يُعثر على أزرار في الصور.")
 
-async def _call_groq(client: httpx.AsyncClient, prompt: str):
-    """يستدعي Groq API."""
-    payload = {
-        "model": GROQ_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.3,
-    }
-    resp = await client.post(
-        GROQ_URL,
-        headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-        json=payload,
-        timeout=60,
-    )
-    resp.raise_for_status()
-    return resp.json()["choices"][0]["message"]["content"]
-
 async def _call_gemini(client: httpx.AsyncClient, prompt: str):
-    """يستدعي Gemini API مع تجربة نماذج بديلة."""
+    """يستدعي Gemini API مع تدوير المفاتيح تلقائياً."""
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
-    for model in GEMINI_MODELS:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-        resp = await client.post(url, params={"key": GEMINI_API_KEY}, json=payload, timeout=30)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+    for key in GEMINI_KEYS:
+        resp = await client.post(url, params={"key": key}, json=payload, timeout=30)
         if resp.status_code in (429, 503):
-            logging.warning(f"Gemini {model} unavailable ({resp.status_code}), trying next...")
+            logging.warning(f"Gemini key ...{key[-6:]} rate-limited, trying next key...")
             continue
         resp.raise_for_status()
         return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
     return None
 
 async def process_ai_request(user_request: str, current_btns: list = None):
-    """يجرب Groq أولاً ثم Gemini. يُرجع (action, operations, del_idx, error)."""
-    if not GROQ_API_KEY and not GEMINI_API_KEY:
-        return None, [], [], "❌ لم يُعَيَّن أي مفتاح AI."
+    """يستدعي Gemini ويُرجع (action, operations, del_idx, error)."""
+    if not GEMINI_KEYS:
+        return None, [], [], "❌ لم يُعَيَّن أي مفتاح Gemini API."
 
     if current_btns:
         ctx_lines = [f"الأزرار الحالية الموجودة ({len(current_btns)} زر) مُجمَّعة حسب الأسطر:"]
@@ -1278,28 +1265,17 @@ async def process_ai_request(user_request: str, current_btns: list = None):
     prompt = f"{AI_SYSTEM_PROMPT}\n\n{ctx_text}\n\nطلب المشرف: {user_request}"
 
     async with httpx.AsyncClient() as client:
-        if GROQ_API_KEY:
-            try:
-                raw = await _call_groq(client, prompt)
+        try:
+            raw = await _call_gemini(client, prompt)
+            if raw:
                 action, operations, del_idx = _parse_ai_response(raw)
                 return action, operations, del_idx, None
-            except json.JSONDecodeError:
-                return None, [], [], "⚠️ لم أتمكن من تفسير رد الذكاء الاصطناعي. حاول مرة أخرى."
-            except httpx.HTTPStatusError as e:
-                logging.warning(f"Groq error {e.response.status_code}: {e.response.text[:200]}")
-            except Exception as e:
-                logging.warning(f"Groq exception: {e}")
-        if GEMINI_API_KEY:
-            try:
-                raw = await _call_gemini(client, prompt)
-                if raw:
-                    action, operations, del_idx = _parse_ai_response(raw)
-                    return action, operations, del_idx, None
-            except json.JSONDecodeError:
-                return None, [], [], "⚠️ لم أتمكن من تفسير رد الذكاء الاصطناعي. حاول مرة أخرى."
-            except Exception as e:
-                logging.warning(f"Gemini exception: {e}")
-    return None, [], [], "⚠️ تعذّر الاتصال بالذكاء الاصطناعي. حاول مرة أخرى."
+            return None, [], [], "⚠️ جميع مفاتيح Gemini وصلت لحد الطلبات. حاول لاحقاً."
+        except json.JSONDecodeError:
+            return None, [], [], "⚠️ لم أتمكن من تفسير رد الذكاء الاصطناعي. حاول مرة أخرى."
+        except Exception as e:
+            logging.warning(f"Gemini exception: {e}")
+    return None, [], [], "⚠️ تعذّر الاتصال بـ Gemini. تحقق من المفاتيح وحاول مرة أخرى."
 
 # ── إعداد البوت ──────────────────────────────────────────────────
 async def post_init(app):
