@@ -1267,13 +1267,13 @@ async def on_message(update: Update, ctx):
         if pid is not None:
             b = get_btn(pid); new_pid = b["parent_id"] if b else None
             ctx.user_data["pid"] = new_pid
-            await m.reply_text("🔙", reply_markup=build_kb(uid, new_pid))
+            await m.reply_text(".", reply_markup=build_kb(uid, new_pid))
             if is_admin(uid):
                 label = "⚙️ *إدارة الأزرار*:" if new_pid is None else f"📂 *{get_btn(new_pid)['label'] if get_btn(new_pid) else ''}*"
                 await set_panel(ctx, chat_id, label, kb_manage(new_pid))
         else:
             ctx.user_data["pid"] = None
-            await m.reply_text("🔙", reply_markup=build_kb(uid, None))
+            await m.reply_text(".", reply_markup=build_kb(uid, None))
             if is_admin(uid):
                 await set_panel(ctx, chat_id, "⚙️ *إدارة الأزرار*:", kb_manage(None))
         return
