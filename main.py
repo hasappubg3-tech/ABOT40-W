@@ -1036,6 +1036,26 @@ async def on_message(update: Update, ctx):
         await m.reply_text(f"✅ تم الضبط: {lbl}", reply_markup=build_kb(uid, pid))
         return
 
+    # ── انتظار نص زر "نعم" ───────────────────────────────────────
+    if state == "wait_notif_ok_text":
+        if not m.text or m.text in SPECIAL_BTNS:
+            await m.reply_text("⚠️ أرسل نصاً صحيحاً."); return
+        set_setting("notif_ok_text", m.text.strip())
+        ctx.user_data.pop("state", None)
+        await set_panel(ctx, chat_id, "📢 *رسالة الاشتراك*", kb_notif1_settings())
+        await m.reply_text(f"✅ تم حفظ نص زر \"نعم\": {m.text.strip()}", reply_markup=build_kb(uid, pid))
+        return
+
+    # ── انتظار نص زر "لا" ────────────────────────────────────────
+    if state == "wait_notif_cancel_text":
+        if not m.text or m.text in SPECIAL_BTNS:
+            await m.reply_text("⚠️ أرسل نصاً صحيحاً."); return
+        set_setting("notif_cancel_text", m.text.strip())
+        ctx.user_data.pop("state", None)
+        await set_panel(ctx, chat_id, "📢 *رسالة الاشتراك*", kb_notif1_settings())
+        await m.reply_text(f"✅ تم حفظ نص زر \"لا\": {m.text.strip()}", reply_markup=build_kb(uid, pid))
+        return
+
     # ── انتظار ملف الاستعادة ─────────────────────────────────────
     if state == "wait_restore_zip":
         if not m.document:
@@ -1577,6 +1597,26 @@ async def cb_manage(update: Update, ctx):
         set_setting("notif_channel", "")
         await q.edit_message_text("✅ تم إزالة رابط القناة.", parse_mode="Markdown",
                                   reply_markup=kb_notif1_settings())
+        return
+
+    if d == "st_notif_ok_text":
+        ctx.user_data["state"] = "wait_notif_ok_text"
+        cur = get_setting("notif_ok_text", "✅ نعم، اشتركت")
+        await q.edit_message_text(
+            f'✏️ *تعديل نص زر "نعم"*\n\nالنص الحالي: `{cur}`\n\nأرسل النص الجديد:',
+            parse_mode="Markdown",
+            reply_markup=kb_cancel_inline()
+        )
+        return
+
+    if d == "st_notif_cancel_text":
+        ctx.user_data["state"] = "wait_notif_cancel_text"
+        cur = get_setting("notif_cancel_text", "❌ لا، لاحقاً")
+        await q.edit_message_text(
+            f'✏️ *تعديل نص زر "لا"*\n\nالنص الحالي: `{cur}`\n\nأرسل النص الجديد:',
+            parse_mode="Markdown",
+            reply_markup=kb_cancel_inline()
+        )
         return
 
     if d == "st_notif_opens":
