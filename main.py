@@ -296,15 +296,6 @@ async def send_notif_gate(target, uid, bid):
     ok_text     = get_setting("notif_ok_text",    "✅ نعم، اشتركت")
     cancel_text = get_setting("notif_cancel_text", "❌ لا، لاحقاً")
 
-    popup_text = (
-        "╔══════════════════╗\n"
-        "        🔔  *تنبيه مهم*  🔔\n"
-        "╚══════════════════╝\n\n"
-        f"{msg}\n\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "⚠️ _يجب الرد قبل الاستمرار_"
-    )
-
     rows = []
     if chan:
         url = chan if chan.startswith("http") else f"https://t.me/{chan.lstrip('@')}"
@@ -315,7 +306,10 @@ async def send_notif_gate(target, uid, bid):
     ])
     markup = InlineKeyboardMarkup(rows)
     try:
-        await target.reply_text(popup_text, parse_mode="Markdown", reply_markup=markup)
+        try:
+            await target.reply_text(msg, parse_mode="Markdown", reply_markup=markup)
+        except Exception:
+            await target.reply_text(msg, reply_markup=markup)
         mark_notif_sent(uid)
         set_pending_notif(uid, bid)
     except Exception:
