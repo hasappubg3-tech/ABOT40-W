@@ -135,6 +135,11 @@ def init_db():
         except Exception:
             pass
         try:
+            c.execute("ALTER TABLE user_stats ADD COLUMN subscribed_via_notif INTEGER DEFAULT 0")
+            c.commit()
+        except Exception:
+            pass
+        try:
             c.execute("ALTER TABLE user_stats ADD COLUMN first_seen INTEGER DEFAULT 0")
             c.commit()
         except Exception:
@@ -280,6 +285,15 @@ def clear_pending_notif(uid):
     c = db()
     c.execute("UPDATE user_stats SET pending_notif_bid=0 WHERE user_id=?", (uid,))
     c.commit(); c.close()
+
+def record_channel_subscription(uid):
+    _ensure_user_stats(uid)
+    c = db()
+    already = c.execute("SELECT subscribed_via_notif FROM user_stats WHERE user_id=?", (uid,)).fetchone()
+    if already and already[0] == 0:
+        c.execute("UPDATE user_stats SET subscribed_via_notif=1 WHERE user_id=?", (uid,))
+        c.commit()
+    c.close()
 
 def get_pending_notif(uid):
     s = get_user_stats(uid)
@@ -829,6 +843,9 @@ def get_stats() -> str:
         eligible_30d = c.execute("SELECT COUNT(*) FROM user_stats WHERE first_seen>0 AND first_seen<=?", (ts_30d,)).fetchone()[0]
         retained_30d = c.execute("SELECT COUNT(*) FROM user_stats WHERE first_seen>0 AND first_seen<=? AND last_active>=?", (ts_30d, ts_30d)).fetchone()[0]
 
+        # ── القناة ───────────────────────────────────────
+        subscribed_via_notif = c.execute("SELECT COUNT(*) FROM user_stats WHERE subscribed_via_notif=1").fetchone()[0]
+
         # ── البوت ────────────────────────────────────────
         total_btns = c.execute("SELECT COUNT(*) FROM buttons").fetchone()[0]
         menus      = c.execute("SELECT COUNT(*) FROM buttons WHERE type='menu'").fetchone()[0]
@@ -837,6 +854,7 @@ def get_stats() -> str:
 
     retention_7d  = f"{round(retained_7d/eligible_7d*100)}%" if eligible_7d > 0 else "—"
     retention_30d = f"{round(retained_30d/eligible_30d*100)}%" if eligible_30d > 0 else "—"
+    sub_rate      = f"{round(subscribed_via_notif/total_users*100)}%" if total_users > 0 else "—"
     db_size_kb    = round(os.path.getsize(DB) / 1024, 1) if os.path.exists(DB) else 0
 
     return (
@@ -846,6 +864,9 @@ def get_stats() -> str:
         f"  ├ جدد اليوم: `{new_today}`\n"
         f"  ├ جدد الأمس: `{new_yesterday}`\n"
         f"  └ جدد آخر 30 يوم: `{new_month}`\n\n"
+        "📢 *الاشتراك بالقناة*\n"
+        f"  ├ اشتركوا عبر رسالة الاشتراك: `{subscribed_via_notif}`\n"
+        f"  └ نسبة الاشتراك: `{sub_rate}`\n\n"
         "💬 *الرسائل*\n"
         f"  ├ اليوم: `{msg_today}`\n"
         f"  ├ الأمس: `{msg_yesterday}`\n"
@@ -1468,6 +1489,8 @@ async def cb_manage(update: Update, ctx):
                 return
             # إما مشترك فعلاً أو تعذّر الفحص → نسمح بالمتابعة
             await q.answer()
+            if sub_status is True:
+                record_channel_subscription(uid)
             clear_pending_notif(uid)
             try:
                 await q.edit_message_reply_markup(reply_markup=None)
