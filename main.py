@@ -233,30 +233,31 @@ def should_notify(uid) -> bool:
     if enabled != "1":
         return False
     s = get_user_stats(uid)
-    opens      = s.get("opens", 0)
-    sessions   = s.get("sessions", 0)
-    last_op    = s.get("last_notif_opens", 0)
-    last_ses   = s.get("last_notif_sessions", 0)
+    opens   = s.get("opens", 0)
+    last_op = s.get("last_notif_opens", 0)
     try:
-        every_opens    = int(get_setting("notif_every_opens", "5"))
-        every_sessions = int(get_setting("notif_every_sessions", "3"))
+        every_opens = int(get_setting("notif_every_opens", "5"))
     except Exception:
-        every_opens, every_sessions = 5, 3
+        every_opens = 5
     if every_opens > 0 and opens > 0 and (opens - last_op) >= every_opens:
-        return True
-    if every_sessions > 0 and sessions > 0 and (sessions - last_ses) >= every_sessions:
         return True
     return False
 
-async def send_notif(target, uid):
-    msg   = get_setting("notif_message", "")
-    chan  = get_setting("notif_channel", "").strip()
-    if not msg:
-        return
-    markup = None
+async def send_notif_gate(target, uid, bid):
+    """يُرسل رسالة التنبيه كبوابة inline — المستخدم يختار موافق أو إلغاء."""
+    msg          = get_setting("notif_message", "🔔 يرجى الاشتراك في قناتنا!")
+    chan         = get_setting("notif_channel", "").strip()
+    ok_text      = get_setting("notif_ok_text",     "✅ موافق")
+    cancel_text  = get_setting("notif_cancel_text",  "❌ إلغاء")
+    rows = []
     if chan:
         url = chan if chan.startswith("http") else f"https://t.me/{chan.lstrip('@')}"
-        markup = InlineKeyboardMarkup([[InlineKeyboardButton("📢 اشترك الآن", url=url)]])
+        rows.append([InlineKeyboardButton("📢 اشترك بالقناة", url=url)])
+    rows.append([
+        InlineKeyboardButton(ok_text,     callback_data=f"notif_ok_{bid}"),
+        InlineKeyboardButton(cancel_text, callback_data=f"notif_skip_{bid}"),
+    ])
+    markup = InlineKeyboardMarkup(rows)
     try:
         await target.reply_text(msg, reply_markup=markup)
         mark_notif_sent(uid)
@@ -650,11 +651,12 @@ def kb_settings():
     ])
 
 def kb_notif_settings():
-    notif_on  = get_setting("notif_enabled", "1") == "1"
-    msg       = get_setting("notif_message", "")
-    chan      = get_setting("notif_channel", "")
-    every_op  = get_setting("notif_every_opens", "5")
-    every_ses = get_setting("notif_every_sessions", "3")
+    notif_on     = get_setting("notif_enabled", "1") == "1"
+    msg          = get_setting("notif_message", "")
+    chan         = get_setting("notif_channel", "")
+    every_op     = get_setting("notif_every_opens", "5")
+    ok_text      = get_setting("notif_ok_text",    "✅ موافق")
+    cancel_text  = get_setting("notif_cancel_text", "❌ إلغاء")
     toggle_label = "🔕 إيقاف التنبيهات" if notif_on else "🔔 تفعيل التنبيهات"
     rows = []
     rows.append([InlineKeyboardButton(toggle_label, callback_data="st_notif_toggle")])
@@ -670,10 +672,10 @@ def kb_notif_settings():
         f"📂 كل {every_op} فتح محتوى",
         callback_data="st_notif_opens"
     )])
-    rows.append([InlineKeyboardButton(
-        f"🔄 كل {every_ses} جلسات",
-        callback_data="st_notif_sessions"
-    )])
+    rows.append([
+        InlineKeyboardButton(f'زر "موافق": {ok_text}',     callback_data="st_notif_ok_text"),
+        InlineKeyboardButton(f'زر "إلغاء": {cancel_text}', callback_data="st_notif_cancel_text"),
+    ])
     rows.append([InlineKeyboardButton("🔙 رجوع", callback_data="st_back")])
     return InlineKeyboardMarkup(rows)
 
@@ -762,7 +764,7 @@ async def send_items(m, bid, uid=None):
     if uid:
         inc_user_opens(uid)
         if should_notify(uid):
-            await send_notif(m, uid)
+            await send_notif_gate(m, uid, bid)
 
 # ── /start ────────────────────────────────────────────────────────
 async def cmd_start(update: Update, ctx):
@@ -779,8 +781,6 @@ async def cmd_start(update: Update, ctx):
         await set_panel(ctx, update.message.chat_id, "⚙️ *إدارة الأزرار*:", kb_manage(None))
     if not is_admin(uid):
         inc_user_sessions(uid)
-        if should_notify(uid):
-            await send_notif(update.message, uid)
 
 async def cmd_myid(update: Update, ctx):
     await update.message.reply_text(f"🆔 `{update.effective_user.id}`", parse_mode="Markdown")
