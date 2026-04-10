@@ -266,6 +266,9 @@ async def is_subscribed(bot, uid: int) -> bool:
 
 def should_notify(uid) -> bool:
     """النظام 1: هل يجب إظهار التنبيه المنبثق؟"""
+    chan = get_setting("notif_channel", "").strip()
+    if not chan:
+        return False
     msg = get_setting("notif_message", "")
     if not msg:
         return False
@@ -873,12 +876,19 @@ async def send_items(m, bid, uid=None, bot=None):
             await resend_notif_gate(m, uid, pending_bid)
             return
 
-        # فحص الاشتراك في القناة
+        # فحص الاشتراك في القناة (مرة واحدة فقط)
         subscribed = await is_subscribed(bot, uid) if bot else False
 
         # النظام 2: رسالة عادية مع كل محتوى للغير مشتركين
         if not subscribed and should_notify_2():
             await send_notif2(m)
+
+        # النظام 1: تحديث العداد وفحص قبل إرسال المحتوى
+        if not subscribed:
+            inc_user_opens(uid)
+            if should_notify(uid):
+                await send_notif_gate(m, uid, bid)
+                return  # حجب المحتوى عند ظهور التنبيه المنبثق
 
     items = get_items(bid)
     if not items:
@@ -892,12 +902,6 @@ async def send_items(m, bid, uid=None, bot=None):
     link_markup = build_caption_btn_markup(cap_btns)
     for item in items:
         await send_file_item(m, item, extra_caption=extra_cap, reply_markup=link_markup)
-    if uid and not is_admin(uid):
-        inc_user_opens(uid)
-        # النظام 1: هل يجب إظهار التنبيه المنبثق بعد N ضغطة؟
-        subscribed = await is_subscribed(bot, uid) if bot else False
-        if not subscribed and should_notify(uid):
-            await send_notif_gate(m, uid, bid)
 
 # ── /start ────────────────────────────────────────────────────────
 async def cmd_start(update: Update, ctx):
@@ -1396,17 +1400,40 @@ async def cb_manage(update: Update, ctx):
 
     # ── معالجة تنبيهات الاشتراك (لجميع المستخدمين) ───────────────
     if d.startswith("notif_ok_") or d.startswith("notif_skip_"):
-        await q.answer()
-        clear_pending_notif(uid)
         if d.startswith("notif_ok_"):
+            # التحقق الفعلي من الاشتراك قبل السماح بالمتابعة
+            actually_subscribed = await is_subscribed(ctx.bot, uid)
+            if not actually_subscribed:
+                chan = get_setting("notif_channel", "").strip()
+                ok_text     = get_setting("notif_ok_text",    "✅ نعم، اشتركت")
+                cancel_text = get_setting("notif_cancel_text", "❌ لا، لاحقاً")
+                bid_str = d[len("notif_ok_"):]
+                rows = []
+                if chan:
+                    url = chan if chan.startswith("http") else f"https://t.me/{chan.lstrip('@')}"
+                    rows.append([InlineKeyboardButton("📢 انضم للقناة الآن", url=url)])
+                rows.append([
+                    InlineKeyboardButton(ok_text,     callback_data=f"notif_ok_{bid_str}"),
+                    InlineKeyboardButton(cancel_text, callback_data=f"notif_skip_{bid_str}"),
+                ])
+                try:
+                    await q.answer("❌ لم يتم التحقق من اشتراكك، يرجى الانضمام للقناة أولاً!", show_alert=True)
+                    await q.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(rows))
+                except Exception:
+                    pass
+                return
+            await q.answer()
+            clear_pending_notif(uid)
             try:
                 await q.edit_message_text(
-                    "✅ *شكراً لك!*\n\nيمكنك الآن الاستمرار في التصفح.",
+                    "✅ *تم التحقق من اشتراكك!*\n\nيمكنك الآن الاستمرار في التصفح.",
                     parse_mode="Markdown"
                 )
             except Exception:
                 pass
         else:
+            await q.answer()
+            clear_pending_notif(uid)
             try:
                 await q.edit_message_text(
                     "👌 *حسناً!*\n\nيمكنك الاستمرار في التصفح.",
