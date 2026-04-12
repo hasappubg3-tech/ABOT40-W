@@ -1163,7 +1163,10 @@ async def send_items(m, bid, uid=None, bot=None):
     if uid and not is_admin(uid):
         phrase = get_random_phrase()
         if phrase:
-            await m.reply_text(phrase)
+            try:
+                await m.reply_text(phrase, message_effect_id="5046509860389126442")
+            except Exception:
+                await m.reply_text(phrase)
 
 # ── /start ────────────────────────────────────────────────────────
 async def cmd_start(update: Update, ctx):
