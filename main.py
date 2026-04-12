@@ -205,6 +205,35 @@ def set_setting(key, value):
 def get_global_caption():
     return get_setting("global_caption", "")
 
+# ── العبارات التحفيزية ────────────────────────────────────────────
+def get_phrases():
+    return [dict(r) for r in db().execute(
+        "SELECT id, phrase FROM motivational_phrases ORDER BY id"
+    ).fetchall()]
+
+def add_phrase(text: str):
+    c = db()
+    c.execute("INSERT INTO motivational_phrases(phrase) VALUES(?)", (text,))
+    c.commit(); c.close()
+
+def del_phrase(pid: int):
+    c = db()
+    c.execute("DELETE FROM motivational_phrases WHERE id=?", (pid,))
+    c.commit(); c.close()
+
+def get_phrases_chance() -> int:
+    """يُرجع نسبة إرسال العبارة (0-100)."""
+    return int(get_setting("phrases_chance", "30"))
+
+def get_random_phrase() -> str | None:
+    """يُرجع عبارة عشوائية أو None إذا لم توجد عبارات / لم تتحقق النسبة."""
+    import random
+    chance = get_phrases_chance()
+    if chance <= 0 or random.randint(1, 100) > chance:
+        return None
+    rows = db().execute("SELECT phrase FROM motivational_phrases ORDER BY RANDOM() LIMIT 1").fetchall()
+    return rows[0][0] if rows else None
+
 def toggle_btn_no_caption(bid):
     b = get_btn(bid)
     if not b: return False
@@ -815,6 +844,7 @@ def kb_settings():
         [InlineKeyboardButton("📊 الإحصائيات",                   callback_data="st_stats")],
         [InlineKeyboardButton("🔥 الملفات الترند",                callback_data="st_trending_0")],
         [InlineKeyboardButton("📡 الإذاعة",                       callback_data="st_broadcast")],
+        [InlineKeyboardButton("💬 العبارات التحفيزية",             callback_data="st_phrases")],
     ])
 
 def kb_notif1_settings():
@@ -859,6 +889,20 @@ def kb_broadcast_confirm():
             InlineKeyboardButton("❌ إلغاء",          callback_data="st_broadcast"),
         ],
     ])
+
+def kb_phrases():
+    phrases = get_phrases()
+    chance  = get_phrases_chance()
+    rows = []
+    for p in phrases:
+        short = p["phrase"][:30] + ("…" if len(p["phrase"]) > 30 else "")
+        rows.append([
+            InlineKeyboardButton(f"🗑 {short}", callback_data=f"st_phrase_del_{p['id']}"),
+        ])
+    rows.append([InlineKeyboardButton("➕ إضافة عبارة",            callback_data="st_phrase_add")])
+    rows.append([InlineKeyboardButton(f"🎲 نسبة الظهور: {chance}%", callback_data="st_phrase_chance")])
+    rows.append([InlineKeyboardButton("رجوع",                       callback_data="st_back")])
+    return InlineKeyboardMarkup(rows)
 
 def kb_caption_settings():
     global_cap = get_global_caption()
@@ -1115,6 +1159,12 @@ async def send_items(m, bid, uid=None, bot=None):
     for item in items:
         await send_file_item(m, item, extra_caption=extra_cap, reply_markup=link_markup)
 
+    # إرسال عبارة تحفيزية عشوائية بعد المحتوى (للمستخدمين فقط)
+    if uid and not is_admin(uid):
+        phrase = get_random_phrase()
+        if phrase:
+            await m.reply_text(phrase)
+
 # ── /start ────────────────────────────────────────────────────────
 async def cmd_start(update: Update, ctx):
     uid = update.effective_user.id
@@ -1345,6 +1395,34 @@ async def on_message(update: Update, ctx):
             parse_mode="Markdown",
             reply_markup=kb_broadcast_confirm()
         )
+        return
+
+    # ── انتظار نص عبارة تحفيزية جديدة ──────────────────────────────
+    if state == "wait_phrase_text":
+        if not m.text or m.text in SPECIAL_BTNS:
+            await m.reply_text("⚠️ أرسل نصاً للعبارة."); return
+        add_phrase(m.text.strip())
+        ctx.user_data.pop("state", None)
+        await set_panel(ctx, chat_id,
+                        f"✅ تمت إضافة العبارة.\n\n💬 *العبارات التحفيزية* ({len(get_phrases())})",
+                        kb_phrases())
+        await m.reply_text("✅", reply_markup=build_kb(uid, pid))
+        return
+
+    # ── انتظار نسبة العبارات التحفيزية ──────────────────────────────
+    if state == "wait_phrases_chance":
+        try:
+            val = int((m.text or "").strip())
+            if not 0 <= val <= 100:
+                raise ValueError
+        except ValueError:
+            await m.reply_text("⚠️ أرسل رقماً بين 0 و 100."); return
+        set_setting("phrases_chance", str(val))
+        ctx.user_data.pop("state", None)
+        await set_panel(ctx, chat_id,
+                        f"✅ تم ضبط النسبة على *{val}%*\n\n💬 *العبارات التحفيزية*",
+                        kb_phrases())
+        await m.reply_text("✅", reply_markup=build_kb(uid, pid))
         return
 
     # ── انتظار اسم جديد للتعديل ───────────────────────────────────
@@ -1808,6 +1886,59 @@ async def cb_manage(update: Update, ctx):
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("رجوع للإعدادات", callback_data="st_back")
+            ]])
+        )
+        return
+
+    # ── العبارات التحفيزية ────────────────────────────────────────
+    if d == "st_phrases":
+        phrases = get_phrases()
+        count   = len(phrases)
+        chance  = get_phrases_chance()
+        header  = (
+            f"💬 *العبارات التحفيزية* — {count} عبارة\n"
+            f"🎲 نسبة الظهور: *{chance}%*\n\n"
+            "اضغط على عبارة لحذفها، أو أضف عبارة جديدة."
+        ) if count else (
+            f"💬 *العبارات التحفيزية*\n🎲 نسبة الظهور: *{chance}%*\n\nلا توجد عبارات بعد."
+        )
+        await q.edit_message_text(header, parse_mode="Markdown", reply_markup=kb_phrases())
+        return
+
+    if d == "st_phrase_add":
+        ctx.user_data["state"] = "wait_phrase_text"
+        await q.edit_message_text(
+            "✏️ أرسل نص العبارة التحفيزية الجديدة:",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("❌ إلغاء", callback_data="st_phrases")
+            ]])
+        )
+        return
+
+    if d.startswith("st_phrase_del_"):
+        pid_del = int(d[len("st_phrase_del_"):])
+        del_phrase(pid_del)
+        phrases = get_phrases()
+        count   = len(phrases)
+        chance  = get_phrases_chance()
+        header  = (
+            f"💬 *العبارات التحفيزية* — {count} عبارة\n"
+            f"🎲 نسبة الظهور: *{chance}%*\n\n"
+            "✅ تم حذف العبارة."
+        )
+        await q.edit_message_text(header, parse_mode="Markdown", reply_markup=kb_phrases())
+        return
+
+    if d == "st_phrase_chance":
+        chance = get_phrases_chance()
+        ctx.user_data["state"] = "wait_phrases_chance"
+        await q.edit_message_text(
+            f"🎲 *نسبة ظهور العبارة التحفيزية*\n\nالنسبة الحالية: *{chance}%*\n\n"
+            "أرسل رقماً بين 0 و 100:\n"
+            "_0 = معطّلة، 100 = تظهر مع كل محتوى_",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("❌ إلغاء", callback_data="st_phrases")
             ]])
         )
         return
