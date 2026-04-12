@@ -657,6 +657,16 @@ def donation_text() -> str:
         "اختر مبلغاً جاهزاً أو اكتب عدد النجوم الذي تريده."
     )
 
+def default_donation_thanks_message() -> str:
+    return "💝 شكراً جزيلاً على دعمك بـ {stars} نجمة!\n\nدعمك يساعدنا نستمر ونطور المحتوى."
+
+def get_donation_thanks_message(stars: int = 0) -> str:
+    msg = get_setting("donation_thanks_message", default_donation_thanks_message())
+    if not msg:
+        msg = default_donation_thanks_message()
+    stars_text = str(stars) if stars else "نجوم"
+    return msg.replace("{stars}", stars_text)
+
 def kb_donation_stars():
     return InlineKeyboardMarkup([
         [
@@ -1088,6 +1098,7 @@ def kb_settings():
         [InlineKeyboardButton("🔥 الملفات الترند",                callback_data="st_trending_0")],
         [InlineKeyboardButton("📡 الإذاعة",                       callback_data="st_broadcast")],
         [InlineKeyboardButton("💬 العبارات التحفيزية",             callback_data="st_phrases")],
+        [InlineKeyboardButton("💝 رسالة شكر التبرع",               callback_data="st_donation_thanks")],
         [InlineKeyboardButton("⭐ الأزرار المميزة",                callback_data="st_specials")],
     ])
 
@@ -1546,6 +1557,18 @@ async def on_message(update: Update, ctx):
                         f"✅ تم حفظ الكليشة الثابتة:\n\n{m.text}\n\n⚙️ *الاعدادات*",
                         kb_settings())
         await m.reply_text("✅ تم حفظ الكليشة.", reply_markup=build_kb(uid, pid))
+        return
+
+    if state == "wait_donation_thanks":
+        if not m.text or m.text in SPECIAL_BTNS:
+            await m.reply_text("⚠️ أرسل نصاً صحيحاً لرسالة الشكر."); return
+        set_setting("donation_thanks_message", m.text)
+        ctx.user_data.pop("state", None)
+        await set_panel(ctx, chat_id,
+                        f"✅ تم حفظ رسالة شكر التبرع:\n\n{m.text}\n\n"
+                        "تقدر تستخدم `{stars}` داخل النص حتى يظهر عدد النجوم.",
+                        kb_settings())
+        await m.reply_text("✅ تم حفظ رسالة شكر التبرع.", reply_markup=build_kb(uid, pid))
         return
 
     # ── انتظار اسم زر الرابط ────────────────────────────────────
@@ -2389,6 +2412,37 @@ async def cb_manage(update: Update, ctx):
     if d == "st_back":
         await q.edit_message_text("⚙️ *الاعدادات*", parse_mode="Markdown",
                                   reply_markup=kb_settings())
+        return
+
+    if d == "st_donation_thanks":
+        msg = get_setting("donation_thanks_message", default_donation_thanks_message())
+        await q.edit_message_text(
+            f"💝 *رسالة شكر التبرع الحالية:*\n\n{msg}\n\n"
+            "ملاحظة: اكتب `{stars}` داخل الرسالة حتى يتم استبدالها بعدد النجوم.",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("✏️ تغيير رسالة الشكر", callback_data="st_donation_thanks_set")],
+                [InlineKeyboardButton("↩️ إرجاع الافتراضي", callback_data="st_donation_thanks_reset")],
+                [InlineKeyboardButton("رجوع", callback_data="st_back")],
+            ])
+        )
+        return
+
+    if d == "st_donation_thanks_set":
+        ctx.user_data["state"] = "wait_donation_thanks"
+        await q.edit_message_text(
+            "✏️ أرسل رسالة الشكر الجديدة.\n\n"
+            "استخدم `{stars}` حتى يظهر عدد النجوم داخل الرسالة.\n"
+            "مثال:\n"
+            "شكراً لدعمك بـ {stars} نجمة، وجودك يسعدنا!",
+            parse_mode="Markdown",
+            reply_markup=kb_cancel_inline()
+        )
+        return
+
+    if d == "st_donation_thanks_reset":
+        set_setting("donation_thanks_message", default_donation_thanks_message())
+        await q.edit_message_text("✅ تم إرجاع رسالة الشكر الافتراضية.", reply_markup=kb_settings())
         return
 
     if d == "st_broadcast":
@@ -3360,13 +3414,14 @@ async def precheckout_callback(update: Update, ctx):
 async def successful_payment_callback(update: Update, ctx):
     payment = update.message.successful_payment
     stars = payment.total_amount if payment and payment.currency == "XTR" else 0
-    if stars:
+    msg = get_donation_thanks_message(stars)
+    try:
         await update.message.reply_text(
-            f"💝 شكراً جزيلاً على دعمك بـ *{stars} نجمة*!\n\nدعمك يساعدنا نستمر ونطور المحتوى.",
-            parse_mode="Markdown"
+            msg,
+            api_kwargs={"message_effect_id": "5046509860389126442"}
         )
-    else:
-        await update.message.reply_text("💝 شكراً جزيلاً على دعمك!")
+    except Exception:
+        await update.message.reply_text(msg)
 
 # ── مهام البومودورو ───────────────────────────────────────────────
 async def _pom_study_end(ctx):
