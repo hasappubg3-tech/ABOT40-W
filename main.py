@@ -3131,15 +3131,23 @@ async def cb_manage(update: Update, ctx):
         bid = int(d[7:])
         ctx.user_data["state"] = "wait_item_content"
         ctx.user_data["item_bid"] = bid
-        ctx.user_data["add_content_control_msg_id"] = q.message.message_id
-        await q.edit_message_text(
-            "📤 *إضافة محتوى متعددة*\n\n"
-            "أرسل المحتوى الآن: نص، صورة، ملف، فيديو، أو صوت.\n"
-            "بعد كل إضافة ابقَ ترسل ملفات أخرى، وعند الانتهاء اضغط الزر أدناه.\n\n"
-            "_إذا ضغطت أي زر آخر من أزرار البوت تنتهي الإضافة تلقائياً._",
+        try:
+            await q.message.delete()
+        except Exception:
+            pass
+        control_msg = await ctx.bot.send_message(
+            chat_id=q.message.chat_id,
+            text=(
+                "📤 *إضافة محتوى متعددة*\n\n"
+                "أرسل المحتوى الآن: نص، صورة، ملف، فيديو، أو صوت.\n"
+                "بعد كل إضافة ابقَ ترسل ملفات أخرى، وعند الانتهاء اضغط الزر أدناه.\n\n"
+                "_إذا ضغطت أي زر آخر من أزرار البوت تنتهي الإضافة تلقائياً._"
+            ),
             parse_mode="Markdown",
             reply_markup=kb_add_content_active(bid)
-        ); return
+        )
+        ctx.user_data["add_content_control_msg_id"] = control_msg.message_id
+        return
 
     # ── عرض عناصر الزر مع أزرار إدارة لكل عنصر ──────────────────
     if d.startswith("ci_view_"):
