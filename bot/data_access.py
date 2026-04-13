@@ -157,6 +157,11 @@ def init_db():
                 PRIMARY KEY (user_id, message_id)
             );
         """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS active_file_convos (
+                user_id INTEGER PRIMARY KEY
+            );
+        """)
         c.commit()
         try:
             c.execute("ALTER TABLE buttons ADD COLUMN special_action TEXT DEFAULT NULL")
@@ -460,6 +465,21 @@ def is_user_reply_msg(user_id, message_id):
         "SELECT 1 FROM user_reply_sessions WHERE user_id=? AND message_id=?",
         (user_id, message_id)
     ).fetchone() is not None
+
+def set_file_convo_active(user_id):
+    c = db()
+    c.execute("INSERT OR IGNORE INTO active_file_convos(user_id) VALUES(?)", (user_id,))
+    c.commit(); c.close()
+
+def is_file_convo_active(user_id):
+    return db().execute(
+        "SELECT 1 FROM active_file_convos WHERE user_id=?", (user_id,)
+    ).fetchone() is not None
+
+def clear_file_convo(user_id):
+    c = db()
+    c.execute("DELETE FROM active_file_convos WHERE user_id=?", (user_id,))
+    c.commit(); c.close()
 
 def swap_btns(bid1, bid2):
     """يبدّل موضع زرين (ord + new_row)."""

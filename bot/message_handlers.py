@@ -76,6 +76,26 @@ async def on_message(update: Update, ctx):
                 await m.reply_text("⚠️ تعذر تحويل طلبك حالياً. حاول مرة أخرى لاحقاً.")
             return
 
+    # ── المستخدم في محادثة نشطة مع المشرف ────────────────────────────
+    if not is_file_supervisor(uid) and not state and is_file_convo_active(uid):
+        if is_bot_button_text(text, pid):
+            clear_file_convo(uid)
+            await m.reply_text("🔚 تم إنهاء المحادثة مع المشرف.", reply_markup=build_kb(uid, pid))
+        else:
+            admins = get_file_request_admins()
+            if not admins:
+                admins = [{"user_id": a["id"], "username": a.get("username")} for a in all_admins()]
+            for admin in admins:
+                try:
+                    await ctx.bot.copy_message(
+                        chat_id=admin["user_id"],
+                        from_chat_id=chat_id,
+                        message_id=m.message_id
+                    )
+                except Exception as e:
+                    logging.warning(f"active convo forward to admin failed: {e}")
+            return
+
     # ── رد المستخدم على رسالة المشرف (reply مباشر) ───────────────────
     if m.reply_to_message and not is_file_supervisor(uid):
         replied_mid = m.reply_to_message.message_id
@@ -115,6 +135,7 @@ async def on_message(update: Update, ctx):
                     message_id=m.message_id
                 )
                 save_user_reply_session(target_uid, copied.message_id)
+                set_file_convo_active(target_uid)
                 await m.reply_text("✅ تم إرسال ردك للمستخدم.")
             except Exception as e:
                 logging.warning(f"file reply to user failed: {e}")
@@ -133,6 +154,7 @@ async def on_message(update: Update, ctx):
                     message_id=m.message_id
                 )
                 save_user_reply_session(target_uid, copied.message_id)
+                set_file_convo_active(target_uid)
                 await m.reply_text("✅ تم إرسال ردك للمستخدم.")
             except Exception as e:
                 logging.warning(f"file direct reply to user failed: {e}")
