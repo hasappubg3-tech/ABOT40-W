@@ -314,6 +314,13 @@ async def send_notif_gate(target, uid, bid):
     except Exception:
         pass
 
+POMODORO_MODES = [
+    (25,  5,  "⏱ 25 دراسة / 5 استراحة (كلاسيكي)"),
+    (50, 10,  "⏱ 50 دراسة / 10 استراحة (موسّع)"),
+    (45, 15,  "⏱ 45 دراسة / 15 استراحة (طويل)"),
+    (15,  5,  "⏱ 15 دراسة / 5 استراحة (سريع)"),
+]
+
 def get_pomodoro_settings(uid: int) -> dict:
     r = db().execute("SELECT * FROM pomodoro_settings WHERE user_id=?", (uid,)).fetchone()
     if r:
