@@ -99,6 +99,16 @@ def init_db():
             c.commit()
         except Exception:
             pass
+        try:
+            c.execute("ALTER TABLE user_stats ADD COLUMN username TEXT")
+            c.commit()
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE user_stats ADD COLUMN first_name TEXT")
+            c.commit()
+        except Exception:
+            pass
         c.execute("""
             CREATE TABLE IF NOT EXISTS daily_stats (
                 date      TEXT PRIMARY KEY,
@@ -221,6 +231,14 @@ def is_admin(uid):
 
 def add_admin(uid, name=None):
     c = db(); c.execute("INSERT OR IGNORE INTO admins VALUES(?,?)", (uid, name)); c.commit(); c.close()
+
+def update_user_info(uid, username=None, first_name=None):
+    c = db()
+    if username is not None:
+        c.execute("UPDATE user_stats SET username=? WHERE user_id=?", (username.lstrip("@") if username else None, uid))
+    if first_name is not None:
+        c.execute("UPDATE user_stats SET first_name=? WHERE user_id=?", (first_name, uid))
+    c.commit(); c.close()
 
 def update_admin_username(uid, username=None):
     if not username:

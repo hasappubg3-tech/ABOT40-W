@@ -447,11 +447,11 @@ async def send_stars_invoice(bot, chat_id: int, stars: int):
     )
 
 def top_users_text() -> str:
-    """يُرجع نص يعرض أبرز 30 مستخدم حسب النشاط (مجموع الفتحات والجلسات) مع استبعاد المشرفين."""
+    """يُرجع نص يعرض أبرز 30 مستخدم حسب النشاط مع استبعاد المشرفين."""
     admin_ids = [a["id"] for a in all_admins()]
     placeholders = ",".join("?" * len(admin_ids)) if admin_ids else "NULL"
     query = (
-        f"SELECT user_id, opens, sessions, (opens + sessions) AS activity "
+        f"SELECT user_id, username, first_name, (opens + sessions) AS activity "
         f"FROM user_stats "
         f"{'WHERE user_id NOT IN (' + placeholders + ')' if admin_ids else ''} "
         f"ORDER BY activity DESC LIMIT 30"
@@ -463,14 +463,15 @@ def top_users_text() -> str:
     lines = ["🏆 *أبرز المستخدمين نشاطاً*\n"]
     for i, row in enumerate(rows, start=1):
         medal = medals.get(i, f"{i}\\.")
-        uid_val = row["user_id"]
-        activity = row["activity"]
-        opens = row["opens"]
-        sessions = row["sessions"]
-        lines.append(
-            f"{medal} `{uid_val}` — {activity} نشاط "
-            f"_({opens} فتحة، {sessions} جلسة)_"
-        )
+        username = row["username"]
+        first_name = row["first_name"]
+        if username:
+            display = f"@{username}"
+        elif first_name:
+            display = first_name
+        else:
+            display = f"مستخدم {i}"
+        lines.append(f"{medal} {display}")
     return "\n".join(lines)
 
 

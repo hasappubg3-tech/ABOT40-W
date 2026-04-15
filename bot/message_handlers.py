@@ -24,8 +24,10 @@ async def on_message(update: Update, ctx):
     chat_id = m.chat_id
 
     track_message(uid)
-    if is_admin(uid) and update.effective_user.username:
-        update_admin_username(uid, update.effective_user.username)
+    _u = update.effective_user
+    update_user_info(uid, username=_u.username, first_name=_u.first_name)
+    if is_admin(uid) and _u.username:
+        update_admin_username(uid, _u.username)
 
     if state == "wait_file_upload":
         if is_bot_button_text(text, pid) and not (m.document or m.photo or m.video or m.audio or m.voice):
