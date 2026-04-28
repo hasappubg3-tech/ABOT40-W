@@ -190,6 +190,11 @@ def init_db():
         except Exception:
             pass
         try:
+            c.execute("ALTER TABLE buttons ADD COLUMN compound_text TEXT DEFAULT NULL")
+            c.commit()
+        except Exception:
+            pass
+        try:
             c.execute("ALTER TABLE buttons ADD COLUMN random_quiz INTEGER DEFAULT 0")
             c.commit()
         except Exception:
@@ -398,6 +403,47 @@ def add_btn_after(after_bid, pid, t, label, new_row=1):
 
 def upd_btn_label(bid, label):
     c = db(); c.execute("UPDATE buttons SET label=? WHERE id=?", (label, bid)); c.commit(); c.close()
+
+def get_compound_text(bid):
+    """نص الرسالة التي تظهر للمستخدم عند ضغط الزر المدمج (افتراضي: 'اختر:')."""
+    r = db().execute("SELECT compound_text FROM buttons WHERE id=?", (bid,)).fetchone()
+    txt = (r["compound_text"] if r else None)
+    return txt if (txt is not None and str(txt).strip() != "") else "اختر:"
+
+def set_compound_text(bid, text):
+    c = db()
+    c.execute("UPDATE buttons SET compound_text=? WHERE id=?", (text, bid))
+    c.commit(); c.close()
+
+def set_btn_unified_rating(bid, val=1):
+    c = db()
+    c.execute("UPDATE buttons SET unified_rating=? WHERE id=?", (1 if val else 0, bid))
+    c.commit(); c.close()
+
+def set_btn_no_caption(bid, val=1):
+    c = db()
+    c.execute("UPDATE buttons SET no_caption=? WHERE id=?", (1 if val else 0, bid))
+    c.commit(); c.close()
+
+def set_btn_no_btn_caption(bid, val=1):
+    c = db()
+    c.execute("UPDATE buttons SET no_btn_caption=? WHERE id=?", (1 if val else 0, bid))
+    c.commit(); c.close()
+
+def propagate_compound_settings(parent_bid):
+    """ينسخ إعدادات (توحيد التقييم، إلغاء الكليشتين) من زر مدمج إلى كل أزراره الداخلية."""
+    parent = get_btn(parent_bid)
+    if not parent or parent.get("type") != "compound":
+        return
+    unified = parent.get("unified_rating", 0) or 0
+    no_cap  = parent.get("no_caption", 0) or 0
+    no_btn  = parent.get("no_btn_caption", 0) or 0
+    c = db()
+    c.execute(
+        "UPDATE buttons SET unified_rating=?, no_caption=?, no_btn_caption=? WHERE parent_id=?",
+        (unified, no_cap, no_btn, parent_bid)
+    )
+    c.commit(); c.close()
 
 def inc_click_count(bid, uid=None):
     c = db()

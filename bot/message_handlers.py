@@ -362,7 +362,37 @@ async def on_message(update: Update, ctx):
         ctx.user_data.pop("add_after", None); ctx.user_data.pop("add_pid", None)
         ctx.user_data.pop("add_new_row", None); ctx.user_data.pop("add_before", None)
         from_exg = ctx.user_data.pop("_from_exg", None)
+        from_compound = ctx.user_data.pop("_from_compound", None)
         ctx.user_data["pid"] = add_pid
+
+        # عند إنشاء زر مدمج: التقييم موحّد افتراضياً + تطبيق على الأبناء (لا يوجد بعد)
+        if t == "compound":
+            set_btn_unified_rating(bid, 1)
+            propagate_compound_settings(bid)
+            await m.reply_text(f"✅ تم إنشاء *{text}*", parse_mode="Markdown",
+                               reply_markup=build_kb(uid, add_pid))
+            await set_panel(ctx, chat_id,
+                            f"🧩 *{text}*\n\nزر مدمج جديد. اضغط ➕ إضافة زر داخلي لإنشاء أول زر.\n_التقييم موحّد افتراضياً._",
+                            kb_compound_quick(bid))
+            return
+
+        # إنشاء زر داخلي تحت زر مدمج: نطبق إعدادات الأب فوراً ونعود للوحة المدمج
+        if from_compound and t == "content":
+            propagate_compound_settings(from_compound)
+            parent_b = get_btn(from_compound)
+            new_pid = parent_b.get("parent_id") if parent_b else None
+            ctx.user_data["pid"] = new_pid
+            await m.reply_text(
+                f"✅ تم إنشاء الزر الداخلي *{text}* — أضف محتواه الآن.",
+                parse_mode="Markdown",
+                reply_markup=build_kb(uid, new_pid)
+            )
+            items = get_items(bid)
+            await set_panel(ctx, chat_id,
+                            f"📄 *{text}*\n_{len(items)} عنصر_\n\nأضف محتوى الزر الداخلي:",
+                            kb_content_panel(bid))
+            return
+
         await m.reply_text(f"✅ تم إنشاء *{text}*", parse_mode="Markdown",
                            reply_markup=build_kb(uid, add_pid))
         if t == "content":
@@ -431,6 +461,23 @@ async def on_message(update: Update, ctx):
             )
             ctx.user_data["add_content_control_msg_id"] = control_msg.message_id
             return
+
+    # ── انتظار نص رسالة الزر المدمج ─────────────────────────────
+    if state == "wait_compound_text":
+        if not m.text or m.text in SPECIAL_BTNS:
+            await m.reply_text("⚠️ أرسل نصاً صحيحاً للرسالة."); return
+        bid = ctx.user_data.pop("compound_text_bid", None)
+        ctx.user_data.pop("state", None)
+        if not bid:
+            return
+        set_compound_text(bid, m.text.strip())
+        b = get_btn(bid)
+        children = get_buttons(bid)
+        await set_panel(ctx, chat_id,
+                        f"🧩 *{b['label'] if b else 'زر مدمج'}*\n_{len(children)} زر داخلي_\n\n✅ تم حفظ نص الرسالة.",
+                        kb_compound_quick(bid))
+        await m.reply_text("✅ تم حفظ النص.", reply_markup=build_kb(uid, pid))
+        return
 
     # ── انتظار وصف جديد لعنصر محتوى ─────────────────────────────
     if state == "wait_item_desc":
@@ -1188,6 +1235,16 @@ async def on_message(update: Update, ctx):
                 parse_mode="Markdown",
                 reply_markup=build_exam_group_kb(uid, b["id"])
             )
+
+    elif b["type"] == "compound":
+        if is_admin(uid):
+            children = get_buttons(b["id"])
+            await set_panel(ctx, chat_id,
+                            f"🧩 *{b['label']}*\n_{len(children)} زر داخلي_",
+                            kb_compound_quick(b["id"]))
+        else:
+            text_msg = get_compound_text(b["id"])
+            await m.reply_text(text_msg, reply_markup=kb_compound_user(b["id"]))
 
     elif b["type"] == "special":
         action = b.get("special_action")

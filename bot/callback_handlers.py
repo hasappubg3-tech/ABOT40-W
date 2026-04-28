@@ -668,6 +668,22 @@ async def cb_manage(update: Update, ctx):
             parse_mode="Markdown", reply_markup=kb_cancel_inline())
         return
 
+    # ── ضغط زر داخلي من زر مدمج (للمستخدم العادي والمشرف) ────────
+    if d.startswith("cmp_open_"):
+        await q.answer()
+        child_bid = int(d[len("cmp_open_"):])
+        child = get_btn(child_bid)
+        if not child:
+            return
+        if is_admin(uid):
+            items = get_items(child_bid)
+            await set_panel(ctx, q.message.chat_id,
+                            f"📄 *{child['label']}*\n_{len(items)} عنصر_",
+                            kb_content_quick(child_bid))
+            return
+        await send_items(q.message, child_bid, uid=uid, bot=ctx.bot)
+        return
+
     await q.answer()
     if not is_admin(uid): return
     chat_id = q.message.chat_id
@@ -1193,6 +1209,12 @@ async def cb_manage(update: Update, ctx):
             await q.edit_message_text(
                 f"🎓 *{b['label']}*\n_{len(topics)} موضوع_\n\nإدارة مواضيع الامتحان:",
                 parse_mode="Markdown", reply_markup=kb_exam_group_manage(ep))
+        elif b and b["type"] == "compound":
+            ctx.user_data["pid"] = b.get("parent_id")
+            children = get_buttons(ep)
+            await q.edit_message_text(
+                f"🧩 *{b['label']}*\n_{len(children)} زر داخلي_\n\nإدارة الأزرار الداخلية:",
+                parse_mode="Markdown", reply_markup=kb_compound_manage(ep))
         elif b and b["type"] == "special":
             action = b.get("special_action")
             if action == "container":
@@ -1231,6 +1253,11 @@ async def cb_manage(update: Update, ctx):
             await q.edit_message_text(
                 f"🎓 *{b['label']}*\n_{len(topics)} موضوع_\n\nإدارة مواضيع الامتحان:",
                 parse_mode="Markdown", reply_markup=kb_exam_group_manage(bid))
+        elif b["type"] == "compound":
+            children = get_buttons(bid)
+            await q.edit_message_text(
+                f"🧩 *{b['label']}*\n_{len(children)} زر داخلي_\n\nإدارة الأزرار الداخلية:",
+                parse_mode="Markdown", reply_markup=kb_compound_manage(bid))
         elif b["type"] == "special":
             action = b.get("special_action")
             if action == "container":
@@ -1544,8 +1571,9 @@ async def cb_manage(update: Update, ctx):
         ctx.user_data["add_pid"] = b["parent_id"] if b else None
         await q.edit_message_text("أين تريد إضافة الزر الجديد؟", reply_markup=kb_add_position(after_bid)); return
 
-    if d in ("pt_m", "pt_c", "pt_s", "pt_q", "pt_e", "pt_g"):
-        t = {"pt_m": "menu", "pt_c": "content", "pt_s": "special", "pt_q": "quiz", "pt_e": "exam", "pt_g": "exam_group"}[d]
+    if d in ("pt_m", "pt_c", "pt_s", "pt_q", "pt_e", "pt_g", "pt_x"):
+        t = {"pt_m": "menu", "pt_c": "content", "pt_s": "special", "pt_q": "quiz",
+             "pt_e": "exam", "pt_g": "exam_group", "pt_x": "compound"}[d]
         ctx.user_data["new_type"] = t
         ctx.user_data["state"] = "wait_label"
         await q.edit_message_text("✏️ اكتب اسم الزر الجديد:", reply_markup=kb_cancel_inline()); return
@@ -1558,6 +1586,79 @@ async def cb_manage(update: Update, ctx):
             await q.message.delete()
         except Exception:
             await q.edit_message_text("تم الإلغاء.")
+        return
+
+    # ── إدارة الزر المدمج ───────────────────────────────────────
+    if d.startswith("cmp_add_"):
+        bid = int(d[len("cmp_add_"):])
+        ctx.user_data["new_type"] = "content"
+        ctx.user_data["add_pid"] = bid
+        ctx.user_data.pop("add_after", None)
+        ctx.user_data.pop("add_new_row", None)
+        ctx.user_data.pop("add_before", None)
+        ctx.user_data["state"] = "wait_label"
+        ctx.user_data["_from_compound"] = bid
+        await q.edit_message_text(
+            "✏️ *إضافة زر داخلي جديد*\n\nاكتب اسم الزر:",
+            parse_mode="Markdown", reply_markup=kb_cancel_inline())
+        return
+
+    if d.startswith("cmp_text_"):
+        bid = int(d[len("cmp_text_"):])
+        ctx.user_data["state"] = "wait_compound_text"
+        ctx.user_data["compound_text_bid"] = bid
+        current = get_compound_text(bid)
+        await q.edit_message_text(
+            f"✏️ *تعديل نص رسالة الزر المدمج*\n\nالنص الحالي:\n_{current}_\n\nأرسل النص الجديد:",
+            parse_mode="Markdown", reply_markup=kb_cancel_inline())
+        return
+
+    if d.startswith("cmp_toggle_urating_"):
+        bid = int(d[len("cmp_toggle_urating_"):])
+        toggle_btn_unified_rating(bid)
+        propagate_compound_settings(bid)
+        b = get_btn(bid)
+        children = get_buttons(bid)
+        unified = (b.get("unified_rating", 0) or 0) if b else 0
+        status = "✅ توحيد التقييم مفعّل لكل الأزرار الداخلية" if unified else "⭕ توحيد التقييم مُلغى لكل الأزرار الداخلية"
+        await q.edit_message_text(
+            f"🧩 *{b['label']}*\n_{len(children)} زر داخلي_\n\n{status}",
+            parse_mode="Markdown", reply_markup=kb_compound_manage(bid))
+        return
+
+    if d.startswith("cmp_toggle_cap_"):
+        bid = int(d[len("cmp_toggle_cap_"):])
+        toggle_btn_no_caption(bid)
+        propagate_compound_settings(bid)
+        b = get_btn(bid)
+        children = get_buttons(bid)
+        no_cap = (b.get("no_caption", 0) or 0) if b else 0
+        status = "🚫 كليشة الكلام مُلغاة لكل الأزرار الداخلية" if no_cap else "✅ كليشة الكلام مفعّلة لكل الأزرار الداخلية"
+        await q.edit_message_text(
+            f"🧩 *{b['label']}*\n_{len(children)} زر داخلي_\n\n{status}",
+            parse_mode="Markdown", reply_markup=kb_compound_manage(bid))
+        return
+
+    if d.startswith("cmp_toggle_btn_cap_"):
+        bid = int(d[len("cmp_toggle_btn_cap_"):])
+        toggle_btn_no_btn_caption(bid)
+        propagate_compound_settings(bid)
+        b = get_btn(bid)
+        children = get_buttons(bid)
+        no_btn_cap = (b.get("no_btn_caption", 0) or 0) if b else 0
+        status = "🚫 كليشة الأزرار مُلغاة لكل الأزرار الداخلية" if no_btn_cap else "✅ كليشة الأزرار مفعّلة لكل الأزرار الداخلية"
+        await q.edit_message_text(
+            f"🧩 *{b['label']}*\n_{len(children)} زر داخلي_\n\n{status}",
+            parse_mode="Markdown", reply_markup=kb_compound_manage(bid))
+        return
+
+    if d.startswith("cmp_preview_"):
+        bid = int(d[len("cmp_preview_"):])
+        b = get_btn(bid)
+        if not b:
+            return
+        text_msg = get_compound_text(bid)
+        await q.message.reply_text(text_msg, reply_markup=kb_compound_user(bid))
         return
 
     # ── تعديل اسم الزر ───────────────────────────────────────────
