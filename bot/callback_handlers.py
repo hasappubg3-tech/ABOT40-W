@@ -1147,8 +1147,15 @@ async def cb_manage(update: Update, ctx):
         return
 
     # ── إضافة سريعة (اضف) ─────────────────────────────────────────
-    if d in ("qa_menu", "qa_content", "qa_special"):
-        btn_type = "menu" if d == "qa_menu" else ("content" if d == "qa_content" else "special")
+    if d.startswith("qa_"):
+        qa_type_map = {
+            "qa_menu": "menu", "qa_content": "content", "qa_special": "special",
+            "qa_quiz": "quiz", "qa_exam": "exam",
+            "qa_examg": "exam_group", "qa_compound": "compound",
+        }
+        if d not in qa_type_map:
+            return
+        btn_type = qa_type_map[d]
         lines = ctx.user_data.pop("quick_add_lines", [])
         qa_pid = ctx.user_data.pop("quick_add_pid", pid)
         if not lines:
@@ -1176,7 +1183,12 @@ async def cb_manage(update: Update, ctx):
             names = "\n".join(
                 f"  {'🔹' if nr else '  ▪️'} {lbl}" for lbl, nr in all_added
             )
-            type_label = "📂 قائمة" if btn_type == "menu" else ("📄 محتوى" if btn_type == "content" else "⭐ مميز")
+            type_labels = {
+                "menu": "📂 قائمة", "content": "📄 محتوى", "special": "⭐ مميز",
+                "quiz": "📊 كويز", "exam": "📝 اختبار",
+                "exam_group": "🎓 زر امتحان", "compound": "🧩 زر مدمج",
+            }
+            type_label = type_labels.get(btn_type, btn_type)
             await q.edit_message_text(
                 f"✅ تم إضافة {len(all_added)} زر ({type_label}):\n{names}",
                 parse_mode="Markdown"
@@ -1577,26 +1589,6 @@ async def cb_manage(update: Update, ctx):
         ctx.user_data["new_type"] = t
         ctx.user_data["state"] = "wait_label"
         await q.edit_message_text("✏️ اكتب اسم الزر الجديد:", reply_markup=kb_cancel_inline()); return
-
-    if d == "pt_bulk":
-        await q.edit_message_text(
-            "⚡ *إضافة سريعة*\n\nاختر نوع الأزرار التي تريد إنشاءها:",
-            parse_mode="Markdown", reply_markup=kb_bulk_pick_type())
-        return
-
-    if d in ("pt_bulkm", "pt_bulkc"):
-        t = "menu" if d == "pt_bulkm" else "content"
-        ctx.user_data["new_type"] = t
-        ctx.user_data["state"] = "wait_bulk_labels"
-        type_label = "📂 قوائم" if t == "menu" else "📄 أزرار محتوى"
-        await q.edit_message_text(
-            f"⚡ *إضافة سريعة* — {type_label}\n\n"
-            f"أرسل أسماء الأزرار:\n"
-            f"• كل اسم في *سطر مستقل*، أو افصل بفاصلة\n"
-            f"• أو أرسل *رسالة صوتية* وسأكتب لك تعليمات تحويلها لنص\n\n"
-            f"_مثال:_\n`الفصل الأول\nالفصل الثاني\nالفصل الثالث`",
-            parse_mode="Markdown", reply_markup=kb_cancel_inline())
-        return
 
     if d == "pt_cancel":
         ctx.user_data.pop("state", None); ctx.user_data.pop("new_type", None)
