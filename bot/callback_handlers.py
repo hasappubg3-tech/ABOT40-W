@@ -679,11 +679,6 @@ async def cb_manage(update: Update, ctx):
         if next_idx >= session["total"]:
             ctx.user_data.pop(_exam_session_key(bid), None)
             parent = (get_btn(bid) or {}).get("parent_id")
-            reply_markup = None
-            if parent and (get_btn(parent) or {}).get("type") == "exam_group":
-                reply_markup = InlineKeyboardMarkup([[
-                    InlineKeyboardButton("↩️ الرجوع لقائمة الامتحانات", callback_data=f"exg_stats_{parent}")
-                ]])
             degree = exam_score(progress.get("correct") or 0, progress.get("total") or 0)
             await q.message.reply_text(
                 "🎉 *أنهيت هذا الفصل!*\n\n"
@@ -691,9 +686,13 @@ async def cb_manage(update: Update, ctx):
                 f"✅ عرفت: *{progress.get('correct')}*\n"
                 f"❌ لم تعرف: *{progress.get('wrong')}*\n"
                 f"🏅 درجتك: *{degree}/100*",
-                parse_mode="Markdown",
-                reply_markup=reply_markup
+                parse_mode="Markdown"
             )
+            if parent and (get_btn(parent) or {}).get("type") == "exam_group":
+                await q.message.reply_text(
+                    "اختر الفصل التالي 👇",
+                    reply_markup=build_exam_group_kb(uid, parent)
+                )
             return
         next_qid = session["q_ids"][next_idx]
         await send_exam_question_to_user(q.message, bid, next_qid, next_idx + 1, session["total"], bot=ctx.bot)
@@ -718,8 +717,11 @@ async def cb_manage(update: Update, ctx):
                 await q.edit_message_reply_markup(reply_markup=None)
             except Exception:
                 pass
-            await q.message.reply_text("🎉 *أحسنت! أنهيت الامتحان.*\n\nتم عرض جميع الأسئلة.", parse_mode="Markdown")
+            parent = (get_btn(bid) or {}).get("parent_id")
             ctx.user_data.pop(_exam_session_key(bid), None)
+            await q.message.reply_text("🎉 *أحسنت! أنهيت الامتحان.*\n\nتم عرض جميع الأسئلة.", parse_mode="Markdown")
+            if parent and (get_btn(parent) or {}).get("type") == "exam_group":
+                await q.message.reply_text("اختر الفصل التالي 👇", reply_markup=build_exam_group_kb(uid, parent))
             return
         next_qid = session["q_ids"][next_idx]
         await send_exam_question_to_user(q.message, bid, next_qid, next_idx + 1, session["total"], bot=ctx.bot)
@@ -744,7 +746,22 @@ async def cb_manage(update: Update, ctx):
             f"🏅 درجتك: *{degree}/100*",
             parse_mode="Markdown"
         )
+        parent = (get_btn(bid) or {}).get("parent_id")
         ctx.user_data.pop(_exam_session_key(bid), None)
+        if parent and (get_btn(parent) or {}).get("type") == "exam_group":
+            await q.message.reply_text("اختر الفصل 👇", reply_markup=build_exam_group_kb(uid, parent))
+        return
+
+    if d.startswith("exg_retry_"):
+        parts = d[len("exg_retry_"):].split("_")
+        parent_bid = int(parts[0])
+        topic_bid = int(parts[1])
+        await q.answer()
+        questions = get_exam_questions(topic_bid)
+        if not questions:
+            await q.answer("📭 هذا الفصل لا يحتوي أسئلة بعد.", show_alert=True)
+            return
+        await send_exam_ready(q.message, topic_bid)
         return
 
     if d.startswith("exg_topic_"):

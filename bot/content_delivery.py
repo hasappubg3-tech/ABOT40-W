@@ -442,12 +442,14 @@ def start_exam_session(ctx, uid, bid):
     q_ids = [q["id"] for q in questions]
     if random_e:
         _random.shuffle(q_ids)
+    old_progress = get_exam_progress(uid, bid)
     session = {
         "bid": bid,
         "q_ids": q_ids,
         "total": len(q_ids),
         "finished": False,
         "graded_qids": [],
+        "old_progress": old_progress,
     }
     ctx.user_data[_exam_session_key(bid)] = session
     reset_exam_progress(uid, bid, len(q_ids))

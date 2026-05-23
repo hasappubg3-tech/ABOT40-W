@@ -1177,6 +1177,13 @@ async def on_message(update: Update, ctx):
     # ── رجوع ──────────────────────────────────────────────────────
     if text == BTN_BACK:
         if pid is not None:
+            current_btn = get_btn(pid)
+            if current_btn and current_btn.get("type") == "exam_group":
+                for topic in get_exam_topics(pid):
+                    sess_key = _exam_session_key(topic["id"])
+                    if sess_key in ctx.user_data:
+                        sess = ctx.user_data.pop(sess_key)
+                        restore_exam_progress(uid, topic["id"], sess.get("old_progress", {}))
             b = get_btn(pid); new_pid = b["parent_id"] if b else None
             ctx.user_data["pid"] = new_pid
             await m.reply_text(".", reply_markup=build_kb(uid, new_pid))
@@ -1187,6 +1194,14 @@ async def on_message(update: Update, ctx):
 
     # ── القائمة الرئيسية ──────────────────────────────────────────
     if text == BTN_HOME:
+        if pid is not None:
+            current_btn = get_btn(pid)
+            if current_btn and current_btn.get("type") == "exam_group":
+                for topic in get_exam_topics(pid):
+                    sess_key = _exam_session_key(topic["id"])
+                    if sess_key in ctx.user_data:
+                        sess = ctx.user_data.pop(sess_key)
+                        restore_exam_progress(uid, topic["id"], sess.get("old_progress", {}))
         ctx.user_data["pid"] = None
         start_msg = get_start_message()
         await m.reply_text(start_msg, reply_markup=build_kb(uid, None))
@@ -1323,7 +1338,18 @@ async def on_message(update: Update, ctx):
             if not questions:
                 await m.reply_text("📭 لا توجد أسئلة في هذا الامتحان بعد.")
             else:
-                await send_exam_ready(m, b["id"])
+                parent_btn = get_btn(b.get("parent_id")) if b.get("parent_id") else None
+                progress = get_exam_progress(uid, b["id"])
+                if progress.get("completed") and parent_btn and parent_btn.get("type") == "exam_group":
+                    await m.reply_text(
+                        exam_topic_stats_text(uid, b["id"]),
+                        parse_mode="Markdown",
+                        reply_markup=InlineKeyboardMarkup([[
+                            InlineKeyboardButton("🔄 إعادة الامتحان", callback_data=f"exg_retry_{parent_btn['id']}_{b['id']}")
+                        ]])
+                    )
+                else:
+                    await send_exam_ready(m, b["id"])
 
     elif b["type"] == "exam_group":
         if is_admin(uid):

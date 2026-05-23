@@ -939,6 +939,23 @@ def get_exam_progress(uid, bid):
         return _d(doc)
     return {"total": len(get_exam_questions(bid)), "answered": 0, "correct": 0, "wrong": 0, "completed": 0}
 
+def restore_exam_progress(uid, bid, old_data):
+    """يستعيد بيانات تقدم الامتحان السابقة عند إلغاء الجلسة بدون إكمال."""
+    if old_data and old_data.get("answered", 0) > 0:
+        _col("exam_progress").update_one(
+            {"user_id": uid, "exam_button_id": bid},
+            {"$set": {"user_id": uid, "exam_button_id": bid,
+                      "total": old_data.get("total", 0),
+                      "answered": old_data.get("answered", 0),
+                      "correct": old_data.get("correct", 0),
+                      "wrong": old_data.get("wrong", 0),
+                      "completed": old_data.get("completed", 0),
+                      "updated_at": int(_time.time())}},
+            upsert=True
+        )
+    else:
+        _col("exam_progress").delete_one({"user_id": uid, "exam_button_id": bid})
+
 def get_exam_topics(parent_bid):
     return [b for b in get_buttons(parent_bid) if b.get("type") == "exam"]
 

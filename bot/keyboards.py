@@ -224,6 +224,21 @@ def exam_group_text(bid, uid):
 def exam_score(correct, total):
     return round(((correct or 0) / total) * 100) if total else 0
 
+def exam_topic_stats_text(uid, bid):
+    b = get_btn(bid)
+    q_count = len(get_exam_questions(bid))
+    progress = get_exam_progress(uid, bid)
+    degree = exam_score(progress.get("correct") or 0, progress.get("total") or q_count)
+    status = "✅ مكتمل" if progress.get("completed") else "❌ غير مكتمل"
+    return (
+        f"📊 *{b['label'] if b else 'الفصل'}*\n\n"
+        f"الحالة: {status}\n"
+        f"🏅 درجتك: *{degree}/100*\n"
+        f"🧩 المجابة: *{progress.get('answered') or 0}/{progress.get('total') or q_count}*\n"
+        f"✅ عرفت: *{progress.get('correct') or 0}*\n"
+        f"❌ لم تعرف: *{progress.get('wrong') or 0}*"
+    )
+
 def exam_group_stats_text(bid, uid):
     b = get_btn(bid)
     topics = get_exam_topics(bid)
