@@ -920,6 +920,49 @@ async def cb_manage(update: Update, ctx):
                                   reply_markup=kb_settings())
         return
 
+    if d == "st_api_keys":
+        all_keys = get_all_gemini_keys()
+        db_keys_str = get_setting("gemini_keys_db", "")
+        db_keys = [k.strip() for k in db_keys_str.split(",") if k.strip()] if db_keys_str else []
+        env_count = len(GEMINI_KEYS)
+        db_count = len(db_keys)
+        status = "✅ متاحة" if all_keys else "❌ لا يوجد مفاتيح"
+        await q.edit_message_text(
+            f"🔑 *مفاتيح Gemini API*\n\n"
+            f"🌐 مفاتيح البيئة (env): *{env_count}*\n"
+            f"💾 مفاتيح قاعدة البيانات: *{db_count}*\n"
+            f"📊 المجموع: *{len(all_keys)}* مفتاح — {status}\n\n"
+            "البوت يبدأ بالمفتاح الأول، وعند الانتهاء منه ينتقل للتالي تلقائياً.\n"
+            "فصل المفاتيح المتعددة بفاصلة `,`",
+            parse_mode="Markdown",
+            reply_markup=kb_api_keys()
+        )
+        return
+
+    if d == "st_api_keys_set":
+        ctx.user_data["state"] = "wait_api_keys"
+        db_keys_str = get_setting("gemini_keys_db", "")
+        current_hint = f"\n\n_المفاتيح الحالية في DB: {len([k for k in db_keys_str.split(',') if k.strip()])} مفتاح_" if db_keys_str else ""
+        await q.edit_message_text(
+            f"🔑 *إضافة / تعديل مفاتيح Gemini*{current_hint}\n\n"
+            "أرسل مفتاحاً واحداً أو أكثر مفصولة بفاصلة:\n\n"
+            "`AIzaSyXXX..., AIzaSyYYY...`\n\n"
+            "⚠️ سيحلّ هذا محلّ المفاتيح القديمة في قاعدة البيانات.",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("إلغاء", callback_data="st_api_keys")
+            ]])
+        )
+        return
+
+    if d == "st_api_keys_clear":
+        set_setting("gemini_keys_db", "")
+        await q.edit_message_text(
+            "✅ تم حذف مفاتيح قاعدة البيانات.\n\nسيستخدم البوت مفاتيح البيئة فقط.",
+            reply_markup=kb_api_keys()
+        )
+        return
+
     if d == "st_donation_thanks":
         msg = get_setting("donation_thanks_message", default_donation_thanks_message())
         await q.edit_message_text(

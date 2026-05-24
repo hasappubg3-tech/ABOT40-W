@@ -99,6 +99,16 @@ def set_start_message(value):
 def get_global_caption():
     return get_setting("global_caption", "")
 
+def get_all_gemini_keys():
+    """يجمع مفاتيح Gemini من متغيرات البيئة وقاعدة البيانات (بدون تكرار)."""
+    db_keys_str = get_setting("gemini_keys_db", "")
+    db_keys = [k.strip() for k in db_keys_str.split(",") if k.strip()] if db_keys_str else []
+    all_keys = list(GEMINI_KEYS)
+    for k in db_keys:
+        if k not in all_keys:
+            all_keys.append(k)
+    return all_keys
+
 def get_storage_channel_id():
     ch = (STORAGE_CHANNEL_ID or "").strip()
     if not ch:

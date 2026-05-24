@@ -82,7 +82,7 @@ async def _call_gemini_vision(client: httpx.AsyncClient, prompt: str, images: li
     payload = {"contents": [{"parts": parts}]}
     for model in GEMINI_VISION_MODELS:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-        for key in GEMINI_KEYS:
+        for key in get_all_gemini_keys():
             try:
                 resp = await client.post(url, params={"key": key}, json=payload, timeout=60)
                 if resp.status_code in (429, 503):
@@ -109,8 +109,8 @@ async def _call_gemini_vision(client: httpx.AsyncClient, prompt: str, images: li
 async def _process_image_batch(wait_msg, m, ctx, uid, pid, images: list, btn_type: str):
     """يحلّل مجموعة صور ويضيف الأزرار المستخرجة منها بالترتيب."""
     import re
-    if not GEMINI_KEYS:
-        await wait_msg.edit_text("❌ تحليل الصور يتطلب مفتاح Gemini API. أضف GEMINI_API_KEY في الإعدادات.")
+    if not get_all_gemini_keys():
+        await wait_msg.edit_text("❌ تحليل الصور يتطلب مفتاح Gemini API. أضفه من الإعدادات ← مفاتيح API.")
         return
     all_added = []
     existing_labels = set()
@@ -163,7 +163,7 @@ async def _call_gemini(client: httpx.AsyncClient, prompt: str):
     """يستدعي Gemini API مع تدوير المفاتيح تلقائياً."""
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
-    for key in GEMINI_KEYS:
+    for key in get_all_gemini_keys():
         resp = await client.post(url, params={"key": key}, json=payload, timeout=60)
         if resp.status_code in (429, 503):
             logging.warning(f"Gemini key ...{key[-6:]} rate-limited, trying next key...")
@@ -175,7 +175,7 @@ async def _call_gemini(client: httpx.AsyncClient, prompt: str):
 async def generate_quiz_questions(source_text: str, count: int):
     """يستخرج أسئلة كويز MCQ من نص مصدر باستخدام Gemini."""
     import re
-    if not GEMINI_KEYS:
+    if not get_all_gemini_keys():
         return None, "❌ لم يُعَيَّن مفتاح Gemini API."
     prompt = (
         f"أنت مساعد تعليمي متخصص في إنشاء أسئلة اختيار متعدد (MCQ).\n\n"
@@ -213,7 +213,7 @@ async def generate_quiz_questions(source_text: str, count: int):
 async def generate_quiz_questions_from_file(b64_data: str, mime_type: str, count: int):
     """يستخرج أسئلة كويز MCQ من ملف (صورة أو PDF) باستخدام Gemini Vision."""
     import re
-    if not GEMINI_KEYS:
+    if not get_all_gemini_keys():
         return None, "❌ لم يُعَيَّن مفتاح Gemini API."
     prompt = (
         f"أنت مساعد تعليمي متخصص في إنشاء أسئلة اختيار متعدد (MCQ).\n\n"
@@ -250,8 +250,8 @@ async def generate_quiz_questions_from_file(b64_data: str, mime_type: str, count
 
 async def process_ai_request(user_request: str, current_btns: list = None):
     """يستدعي Gemini ويُرجع (action, operations, del_idx, error)."""
-    if not GEMINI_KEYS:
-        return None, [], [], "❌ لم يُعَيَّن أي مفتاح Gemini API."
+    if not get_all_gemini_keys():
+        return None, [], [], "❌ لم يُعَيَّن أي مفتاح Gemini API. أضفه من الإعدادات ← مفاتيح API."
 
     if current_btns:
         ctx_lines = [f"الأزرار الحالية الموجودة ({len(current_btns)} زر) مُجمَّعة حسب الأسطر:"]

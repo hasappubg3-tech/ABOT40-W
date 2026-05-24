@@ -843,6 +843,25 @@ async def on_message(update: Update, ctx):
         await m.reply_text(f"✅ تم حفظ نص زر \"لا\": {m.text.strip()}", reply_markup=build_kb(uid, pid))
         return
 
+    # ── انتظار مفاتيح Gemini API ──────────────────────────────────
+    if state == "wait_api_keys":
+        if not m.text or m.text.strip() in SPECIAL_BTNS:
+            await m.reply_text("⚠️ أرسل نصاً صحيحاً يحتوي المفاتيح."); return
+        ctx.user_data.pop("state", None)
+        raw = m.text.strip()
+        keys = [k.strip() for k in raw.split(",") if k.strip()]
+        if not keys:
+            await m.reply_text("⚠️ لم يُتعرَّف على أي مفتاح صالح."); return
+        set_setting("gemini_keys_db", ",".join(keys))
+        await set_panel(ctx, chat_id, "⚙️ *الاعدادات*", kb_settings())
+        await m.reply_text(
+            f"✅ تم حفظ *{len(keys)}* مفتاح Gemini في قاعدة البيانات.\n"
+            "سيتم استخدامها تلقائياً مع مفاتيح البيئة.",
+            parse_mode="Markdown",
+            reply_markup=build_kb(uid, pid)
+        )
+        return
+
     # ── انتظار ملف الاستعادة ─────────────────────────────────────
     if state == "wait_restore_zip":
         if not m.document:

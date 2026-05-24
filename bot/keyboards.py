@@ -657,21 +657,34 @@ def kb_settings():
     notif1_on  = get_setting("notif_enabled", "1") == "1"
     notif1_msg = get_setting("notif_message", "")
     cap_label    = "✏️ تغيير كليشة الكلام" if global_cap else "📌 كليشة الكلام"
-    capbtn_label = f"🔗 كليشة الأزرار ({len(cap_btns)} زر)" if cap_btns else "🔗 كليشة الأزرار"
+    capbtn_label = f"🔗 كليشة الأزرار ({len(cap_btns)})" if cap_btns else "🔗 كليشة الأزرار"
     notif1_icon  = "✅" if (notif1_on and notif1_msg) else "⭕"
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("👥 المشرفون",                     callback_data="st_admins")],
-        [InlineKeyboardButton("💾 النسخ الاحتياطي",              callback_data="st_backup_menu")],
-        [InlineKeyboardButton("✏️ تعديل رسالة البداية",          callback_data="st_startmsg")],
-        [InlineKeyboardButton(cap_label,                         callback_data="st_caption")],
-        [InlineKeyboardButton(capbtn_label,                      callback_data="st_capbtn")],
-        [InlineKeyboardButton(f"📢 رسالة الاشتراك {notif1_icon}", callback_data="st_notif1")],
-        [InlineKeyboardButton("📊 الإحصائيات",                   callback_data="st_stats")],
-        [InlineKeyboardButton("🔥 الملفات الترند",                callback_data="st_trending_0")],
-        [InlineKeyboardButton("📡 الإذاعة",                       callback_data="st_broadcast")],
-        [InlineKeyboardButton("💬 العبارات التحفيزية",             callback_data="st_phrases")],
-        [InlineKeyboardButton("⭐ الأزرار المميزة",                callback_data="st_specials")],
+        [InlineKeyboardButton("👥 المشرفون",                      callback_data="st_admins"),
+         InlineKeyboardButton("💾 النسخ الاحتياطي",               callback_data="st_backup_menu")],
+        [InlineKeyboardButton("✏️ رسالة البداية",                 callback_data="st_startmsg"),
+         InlineKeyboardButton(cap_label,                          callback_data="st_caption")],
+        [InlineKeyboardButton(capbtn_label,                       callback_data="st_capbtn"),
+         InlineKeyboardButton(f"📢 الاشتراك {notif1_icon}",       callback_data="st_notif1")],
+        [InlineKeyboardButton("📊 الإحصائيات",                    callback_data="st_stats"),
+         InlineKeyboardButton("🔥 الملفات الترند",                 callback_data="st_trending_0")],
+        [InlineKeyboardButton("📡 الإذاعة",                        callback_data="st_broadcast"),
+         InlineKeyboardButton("💬 العبارات التحفيزية",              callback_data="st_phrases")],
+        [InlineKeyboardButton("⭐ الأزرار المميزة",                 callback_data="st_specials"),
+         InlineKeyboardButton("🔑 مفاتيح API",                    callback_data="st_api_keys")],
     ])
+
+def kb_api_keys():
+    all_keys = get_all_gemini_keys()
+    db_keys_str = get_setting("gemini_keys_db", "")
+    db_count = len([k for k in db_keys_str.split(",") if k.strip()]) if db_keys_str else 0
+    rows = [
+        [InlineKeyboardButton("➕ إضافة / تعديل مفاتيح Gemini", callback_data="st_api_keys_set")],
+    ]
+    if db_count > 0:
+        rows.append([InlineKeyboardButton(f"🗑 حذف مفاتيح قاعدة البيانات ({db_count})", callback_data="st_api_keys_clear")])
+    rows.append([InlineKeyboardButton("رجوع", callback_data="st_back")])
+    return InlineKeyboardMarkup(rows)
 
 def kb_notif1_settings():
     notif_on     = get_setting("notif_enabled", "1") == "1"
