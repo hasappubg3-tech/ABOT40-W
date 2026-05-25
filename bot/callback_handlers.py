@@ -104,19 +104,11 @@ async def cb_manage(update: Update, ctx):
             bid = int(d[len("mlz_g_"):])
             await after_mlz_grade_pick(q, ctx, bid)
 
-        elif d.startswith("mlz_t_"):
-            suffix = d[len("mlz_t_"):]
-            if suffix == "custom":
-                await q.answer()
-                ctx.user_data["state"] = "wait_mlz_type"
-                await q.message.reply_text(
-                    "📌 *اكتب نوع الملزمة:*\n_(مثال: مراجعة، ملخص، نموذج امتحان)_",
-                    parse_mode="Markdown"
-                )
-            else:
-                idx = int(suffix)
-                mlz_type = MLZ_TYPES[idx] if idx < len(MLZ_TYPES) else "ملزمة"
-                await after_mlz_type_pick(q, ctx, uid, chat_id, mlz_type)
+        elif d.startswith("mlz_tp_"):
+            val = d[len("mlz_tp_"):]
+            await after_mlz_type_pick(q, ctx, val)
+        elif d == "mlz_ef_tp":
+            await after_mlz_edit_field(q, ctx, "tp")
         return
 
     # ── رد المشرف على المستخدم (زر الرد) ────────────────────────────────

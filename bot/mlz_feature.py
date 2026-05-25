@@ -2,7 +2,16 @@ from .shared import *
 import re as _re
 
 # ── الأنواع الشائعة للملزمة ───────────────────────────────────────
-MLZ_TYPES = ["مراجعة", "ملخص", "نموذج امتحان", "أسئلة", "كتاب", "واجب"]
+MLZ_TYPES = ["ملزمة", "مراجعة", "وزاريات", "واجبات", "ملخص", "أسئلة", "كتاب"]
+
+_TYPE_KEYWORDS = {
+    'مراجعة':  ['مراجعة', 'مراجعه', 'مراجعات', 'مركزه', 'مركزة'],
+    'وزاريات': ['وزاريات', 'وزارية', 'وزاريه', 'الوزاري', 'وزاري'],
+    'واجبات':  ['واجبات', 'واجب'],
+    'ملخص':    ['ملخص', 'ملخصات', 'ملخصه'],
+    'أسئلة':   ['اسئلة', 'أسئلة', 'اسئله', 'أسئله'],
+    'كتاب':    ['كتاب', 'كتيب'],
+}
 
 # ── استدعاء Gemini نصياً ──────────────────────────────────────────
 async def _call_gemini_text(prompt: str) -> str | None:
@@ -131,6 +140,15 @@ def _extract_info_local(text: str) -> dict:
         if 'subject' in result:
             break
 
+    # ── نوع الملزمة: بحث في كلمات مفتاحية ──────────────────────
+    for typ, keywords in _TYPE_KEYWORDS.items():
+        for kw in keywords:
+            if _norm(kw) in c_norm:
+                result['mlz_type'] = typ
+                break
+        if 'mlz_type' in result:
+            break
+
     return result
 
 async def extract_mlz_info(source_text: str) -> dict:
@@ -148,10 +166,11 @@ async def extract_mlz_info(source_text: str) -> dict:
         "- teacher: الاسم الكامل لأي شخص مذكور (أستاذ أو مدرس)\n"
         "- grade: الصف الدراسي (مثل: السادس الإعدادي، الخامس علمي)\n"
         "- year: أي سنة من 4 أرقام (2020-2030)\n"
-        "- part: رقم الجزء إن وجد (مثال: 1 أو 2)، اتركه فارغاً إن لم يُذكر\n\n"
+        "- part: رقم الجزء إن وجد (مثال: 1 أو 2)، اتركه فارغاً إن لم يُذكر\n"
+        "- mlz_type: نوع المحتوى (مراجعة أو وزاريات أو واجبات أو ملخص أو أسئلة أو كتاب أو ملزمة)، اتركه فارغاً إن لم يُذكر\n\n"
         f"النص:\n{cleaned_text}\n\n"
         "قاعدة: أرجع JSON فقط، اتركها فارغة إن لم تجد\n"
-        '{"subject": "", "teacher": "", "grade": "", "year": "", "part": ""}'
+        '{"subject": "", "teacher": "", "grade": "", "year": "", "part": "", "mlz_type": ""}'
     )
     try:
         raw = await _call_gemini_text(prompt)
@@ -159,7 +178,7 @@ async def extract_mlz_info(source_text: str) -> dict:
             match = _re.search(r'\{[^{}]*\}', raw, _re.DOTALL)
             if match:
                 gemini = json.loads(match.group())
-                for k in ('subject', 'teacher', 'grade', 'year', 'part'):
+                for k in ('subject', 'teacher', 'grade', 'year', 'part', 'mlz_type'):
                     if not local.get(k) and gemini.get(k, '').strip():
                         local[k] = gemini[k].strip()
     except Exception as e:
@@ -281,12 +300,12 @@ def _build_desc(subject, teacher, grade, year, part=''):
     )
 
 def _build_btn_name(mlz_type, year):
-    return f"📌 {mlz_type} {year}📌"
+    return f"📌{mlz_type} {year}📌"
 
 def _clear_mlz(ctx):
     for key in [
         'mlz_file_type', 'mlz_file_id', 'mlz_subject', 'mlz_teacher',
-        'mlz_grade', 'mlz_year', 'mlz_part', 'mlz_desc', 'mlz_path_str',
+        'mlz_grade', 'mlz_year', 'mlz_part', 'mlz_type', 'mlz_desc', 'mlz_path_str',
         'mlz_panel_mid', 'mlz_panel_chat_id', 'mlz_picker_mid',
     ]:
         ctx.user_data.pop(key, None)
@@ -294,12 +313,13 @@ def _clear_mlz(ctx):
 
 # ── بناء محتوى لوحة التأكيد الموحّدة ───────────────────────────
 def _mlz_panel_content(ctx) -> tuple:
-    subject = ctx.user_data.get('mlz_subject') or '—'
-    teacher = ctx.user_data.get('mlz_teacher') or '—'
-    grade   = ctx.user_data.get('mlz_grade')   or '—'
-    year    = ctx.user_data.get('mlz_year')    or '—'
-    part    = ctx.user_data.get('mlz_part')    or '—'
-    part_display = f"الجزء {part}" if part != '—' else '—'
+    subject  = ctx.user_data.get('mlz_subject') or '—'
+    teacher  = ctx.user_data.get('mlz_teacher') or '—'
+    grade    = ctx.user_data.get('mlz_grade')   or '—'
+    year     = ctx.user_data.get('mlz_year')    or '—'
+    part     = ctx.user_data.get('mlz_part')    or ''
+    mlz_type = ctx.user_data.get('mlz_type')    or 'ملزمة'
+    part_display = f"الجزء {part}" if part else '—'
 
     text = (
         "📂 *معلومات الملزمة*\n\n"
@@ -307,7 +327,8 @@ def _mlz_panel_content(ctx) -> tuple:
         f"📚 المادة:   `{subject}`\n"
         f"👨‍🏫 المدرس:   `{teacher}`\n"
         f"📅 السنة:    `{year}`\n"
-        f"📑 الجزء:    `{part_display}`\n\n"
+        f"📑 الجزء:    `{part_display}`\n"
+        f"🏷 النوع:    `{mlz_type}`\n\n"
         "_اضغط ✏️ لتعديل أي حقل_"
     )
     markup = InlineKeyboardMarkup([
@@ -321,6 +342,7 @@ def _mlz_panel_content(ctx) -> tuple:
         ],
         [
             InlineKeyboardButton("📑 الجزء ✏️",   callback_data="mlz_ef_p"),
+            InlineKeyboardButton("🏷 النوع ✏️",   callback_data="mlz_ef_tp"),
         ],
         [
             InlineKeyboardButton("✅ تأكيد",  callback_data="mlz_confirm"),
@@ -375,6 +397,42 @@ async def _delete_picker(bot, ctx, chat_id):
             await bot.delete_message(chat_id=chat_id, message_id=mid)
         except Exception:
             pass
+
+# ── عرض لوحة اختيار نوع الملزمة ─────────────────────────────────
+async def show_type_picker(q, ctx):
+    current = ctx.user_data.get('mlz_type', 'ملزمة')
+    def _mark(val):
+        return " ✓" if current == val else ""
+    rows = []
+    for i in range(0, len(MLZ_TYPES), 3):
+        row = []
+        for j in range(3):
+            if i + j < len(MLZ_TYPES):
+                t = MLZ_TYPES[i + j]
+                row.append(InlineKeyboardButton(f"{t}{_mark(t)}", callback_data=f"mlz_tp_{i+j}"))
+        rows.append(row)
+    rows.append([InlineKeyboardButton("✏️ اكتب نوعاً آخر", callback_data="mlz_tp_text")])
+    await q.answer()
+    msg = await q.message.reply_text(
+        "🏷 *اختر نوع الملزمة:*",
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(rows)
+    )
+    ctx.user_data['mlz_picker_mid'] = msg.message_id
+
+async def after_mlz_type_pick(q, ctx, val: str):
+    """يحفظ نوع الملزمة المختار."""
+    if val == 'text':
+        await q.answer()
+        ctx.user_data['state'] = 'wait_mlz_type'
+        await q.message.reply_text("🏷 أرسل نوع الملزمة (مثال: وزاريات):")
+        return
+    idx = int(val)
+    chosen = MLZ_TYPES[idx] if idx < len(MLZ_TYPES) else 'ملزمة'
+    ctx.user_data['mlz_type'] = chosen
+    await q.answer(f"✅ {chosen}")
+    await _delete_picker(ctx.bot, ctx, q.message.chat_id)
+    await _refresh_mlz_panel(ctx.bot, ctx)
 
 # ── عرض لوحة اختيار رقم الجزء ───────────────────────────────────
 async def show_part_picker(q, ctx):
@@ -460,6 +518,7 @@ async def start_mlz_flow(m, ctx, uid, chat_id) -> bool:
     ctx.user_data['mlz_grade']   = info.get('grade', '')
     ctx.user_data['mlz_year']    = info.get('year', '')
     ctx.user_data['mlz_part']    = info.get('part', '')
+    ctx.user_data['mlz_type']    = info.get('mlz_type', '') or 'ملزمة'
 
     try:
         await wait_msg.delete()
@@ -502,7 +561,14 @@ async def after_mlz_confirm(q, ctx, uid, chat_id):
         await q.answer(f"⚠️ لم أجد زر الملازم داخل «{grade_btn['label']}»", show_alert=True)
         return
 
-    await show_mlz_type_picker(q)
+    # إغلاق اللوحة والمتابعة مباشرة للإنشاء
+    await q.answer()
+    try:
+        await q.message.delete()
+    except Exception:
+        pass
+    ctx.user_data.pop('mlz_panel_mid', None)
+    await finish_mlz_flow(q.message, ctx, uid, chat_id, q.get_bot())
 
 # ── callback: إلغاء ───────────────────────────────────────────────
 async def after_mlz_cancel(q, ctx):
@@ -533,6 +599,8 @@ async def after_mlz_edit_field(q, ctx, field: str):
         await q.message.reply_text("🏫 أرسل *اسم الصف* كما هو مكتوب في البوت:", parse_mode='Markdown')
     elif field == 'p':
         await show_part_picker(q, ctx)
+    elif field == 'tp':
+        await show_type_picker(q, ctx)
 
 # ── callback: اختيار صف من اللوحة ───────────────────────────────
 async def after_mlz_grade_pick(q, ctx, bid: int):
@@ -546,18 +614,8 @@ async def after_mlz_grade_pick(q, ctx, bid: int):
     await _delete_picker(ctx.bot, ctx, q.message.chat_id)
     await _refresh_mlz_panel(ctx.bot, ctx)
 
-# ── callback: اختيار نوع الملزمة ─────────────────────────────────
-async def after_mlz_type_pick(q, ctx, uid, chat_id, mlz_type: str):
-    """يبدأ إنشاء الملزمة بعد اختيار النوع."""
-    try:
-        await q.message.delete()
-    except Exception:
-        pass
-    ctx.user_data.pop('mlz_panel_mid', None)
-    await finish_mlz_flow(q.message, ctx, uid, chat_id, q.get_bot(), mlz_type)
-
 # ── الإنهاء: إنشاء الأزرار وإضافة الملف ─────────────────────────
-async def finish_mlz_flow(m, ctx, uid, chat_id, bot, mlz_type: str):
+async def finish_mlz_flow(m, ctx, uid, chat_id, bot):
     from .content_delivery import upload_to_channel
 
     subject   = ctx.user_data.get('mlz_subject', '')
@@ -565,6 +623,7 @@ async def finish_mlz_flow(m, ctx, uid, chat_id, bot, mlz_type: str):
     grade     = ctx.user_data.get('mlz_grade', '')
     year      = ctx.user_data.get('mlz_year', '')
     part      = ctx.user_data.get('mlz_part', '')
+    mlz_type  = ctx.user_data.get('mlz_type') or 'ملزمة'
     desc      = ctx.user_data.get('mlz_desc') or _build_desc(subject, teacher, grade, year, part)
     file_type = ctx.user_data.get('mlz_file_type')
     file_id   = ctx.user_data.get('mlz_file_id')
