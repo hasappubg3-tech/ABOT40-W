@@ -4,6 +4,31 @@ import re as _re
 # ── الأنواع الشائعة للملزمة ───────────────────────────────────────
 MLZ_TYPES = ["ملزمة", "مراجعة", "وزاريات", "واجبات", "ملخص", "أسئلة", "كتاب"]
 
+# ── المواد الواضحة التي تتجاوز picker المادة ─────────────────────
+_CLEAR_SUBJECTS = {
+    'رياضيات', 'كيمياء', 'فيزياء', 'انكليزي', 'انجليزي',
+    'عربي', 'العربي', 'احياء', 'أحياء', 'إسلامية', 'اسلامية',
+    'فرنسي', 'اقتصاد', 'تاريخ', 'جغرافية', 'جغرافيا',
+}
+
+def _is_clear_subject(subject: str) -> bool:
+    """يتحقق إذا كانت المادة واضحة ومحددة (لا تحتاج picker)."""
+    n = _norm(subject)
+    return any(_norm(cs) == n for cs in _CLEAR_SUBJECTS)
+
+def _strip_emoji(text: str) -> str:
+    """يُزيل الرموز التعبيرية والأيقونات من النص."""
+    cleaned = _re.sub(
+        r'[\U0001F000-\U0001FFFF'
+        r'\U00002700-\U000027BF'
+        r'\U00002600-\U000026FF'
+        r'\U00002300-\U000023FF'
+        r'\U00002B00-\U00002BFF'
+        r'\uFE00-\uFE0F]+',
+        '', text
+    )
+    return _re.sub(r'\s+', ' ', cleaned).strip()
+
 _TYPE_KEYWORDS = {
     'مراجعة':  ['مراجعة', 'مراجعه', 'مراجعات', 'مركزه', 'مركزة'],
     'وزاريات': ['وزاريات', 'وزارية', 'وزاريه', 'الوزاري', 'وزاري'],
@@ -272,11 +297,7 @@ def find_or_build_mlz_path(grade: str, subject: str, teacher: str):
     mlz_children = [b for b in get_buttons(mlz_btn['id']) if b['type'] == 'menu']
     subject_btn = _fuzzy_match(subject, mlz_children)
     if not subject_btn:
-        # كشف نمط الرموز من أزرار المواد الموجودة وتطبيقه
-        s_prefix, s_suffix = _extract_emoji_wrap(mlz_children)
-        subject_label = _apply_emoji_wrap(subject, s_prefix, s_suffix)
-        new_id = add_btn(mlz_btn['id'], 'menu', subject_label)
-        subject_btn = get_btn(new_id)
+        return grade_btn, mlz_btn, None, None  # لا ننشئ زر مادة جديد
 
     subject_children = [b for b in get_buttons(subject_btn['id']) if b['type'] == 'compound']
     teacher_btn = _fuzzy_match(teacher, subject_children)
@@ -291,10 +312,11 @@ def find_or_build_mlz_path(grade: str, subject: str, teacher: str):
 
 def _build_desc(subject, teacher, grade, year, part=''):
     part_str = f" الجزء {part}" if part else ""
+    clean_grade = _strip_emoji(grade)
     return (
         f"⚜️ | ملزمة {subject}{part_str}\n"
         f"⚜️ | للاستاذ {teacher}\n"
-        f"⚜️ | {grade}\n"
+        f"⚜️ | {clean_grade}\n"
         f"⚜️ | سنة الاصدار : {year}\n"
         f"⚜️ | دقة عالية قابلة للسحب"
     )
@@ -561,13 +583,67 @@ async def after_mlz_confirm(q, ctx, uid, chat_id):
         await q.answer(f"⚠️ لم أجد زر الملازم داخل «{grade_btn['label']}»", show_alert=True)
         return
 
-    # إغلاق اللوحة والمتابعة مباشرة للإنشاء
+    # جلب أزرار المواد الموجودة داخل زر الملازم
+    mlz_subject_btns = [b for b in get_buttons(mlz_btn['id'])
+                        if b['type'] == 'menu' and not b.get('deleted')]
+    matched = _fuzzy_match(subject, mlz_subject_btns)
+
+    # مادة واضحة + تطابق موجود → تابع مباشرة
+    if matched and _is_clear_subject(subject):
+        ctx.user_data['mlz_subject'] = matched['label']
+        await q.answer()
+        try:
+            await q.message.delete()
+        except Exception:
+            pass
+        ctx.user_data.pop('mlz_panel_mid', None)
+        await finish_mlz_flow(q.message, ctx, uid, chat_id, q.get_bot())
+        return
+
+    # في كل الحالات الأخرى → عرض picker المواد
+    await _show_subject_picker(q, ctx, mlz_subject_btns, subject)
+
+# ── picker اختيار المادة من الأزرار الموجودة ─────────────────────
+async def _show_subject_picker(q, ctx, subject_btns: list, hint: str = ''):
+    """يعرض قائمة أزرار المواد الموجودة لاختيار المادة الصحيحة."""
     await q.answer()
-    try:
-        await q.message.delete()
-    except Exception:
-        pass
-    ctx.user_data.pop('mlz_panel_mid', None)
+    if not subject_btns:
+        await q.message.reply_text(
+            "⚠️ لا توجد أزرار مواد داخل زر الملازم بعد.\n"
+            "أضف أزرار المواد يدوياً ثم أعد المحاولة."
+        )
+        return
+    rows = []
+    for i in range(0, len(subject_btns), 2):
+        row = []
+        for j in range(2):
+            if i + j < len(subject_btns):
+                b = subject_btns[i + j]
+                row.append(InlineKeyboardButton(b['label'], callback_data=f"mlz_sub_{b['id']}"))
+        rows.append(row)
+    hint_text = f"\n💡 المادة المكتوبة: *{hint}*" if hint else ""
+    msg = await q.message.reply_text(
+        f"📚 *اختر المادة من الأزرار الموجودة:*{hint_text}",
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(rows)
+    )
+    ctx.user_data['mlz_picker_mid'] = msg.message_id
+
+async def after_mlz_subject_pick(q, ctx, uid, chat_id, bid: int):
+    """يحفظ المادة المختارة من الـ picker ويكمل عملية الإنشاء."""
+    btn = get_btn(bid)
+    if not btn:
+        await q.answer("⚠️ الزر غير موجود.", show_alert=True)
+        return
+    ctx.user_data['mlz_subject'] = btn['label']
+    await q.answer(f"✅ {btn['label']}")
+    await _delete_picker(ctx.bot, ctx, q.message.chat_id)
+    panel_mid = ctx.user_data.pop('mlz_panel_mid', None)
+    if panel_mid:
+        try:
+            await ctx.bot.delete_message(chat_id=q.message.chat_id, message_id=panel_mid)
+        except Exception:
+            pass
     await finish_mlz_flow(q.message, ctx, uid, chat_id, q.get_bot())
 
 # ── callback: إلغاء ───────────────────────────────────────────────
@@ -639,6 +715,14 @@ async def finish_mlz_flow(m, ctx, uid, chat_id, bot):
 
     if not grade_btn or not mlz_btn:
         await wait_msg.edit_text("⚠️ حدث خطأ في تحديد المسار. أعد المحاولة.")
+        _clear_mlz(ctx)
+        return
+
+    if not subject_btn:
+        await wait_msg.edit_text(
+            f"❌ لم أجد زر مادة «{subject}» داخل الملازم.\n"
+            "تأكد من أن زر المادة موجود ثم أعد المحاولة."
+        )
         _clear_mlz(ctx)
         return
 

@@ -109,6 +109,9 @@ async def cb_manage(update: Update, ctx):
             await after_mlz_type_pick(q, ctx, val)
         elif d == "mlz_ef_tp":
             await after_mlz_edit_field(q, ctx, "tp")
+        elif d.startswith("mlz_sub_"):
+            bid = int(d[len("mlz_sub_"):])
+            await after_mlz_subject_pick(q, ctx, uid, chat_id, bid)
         return
 
     # ── رد المشرف على المستخدم (زر الرد) ────────────────────────────────
