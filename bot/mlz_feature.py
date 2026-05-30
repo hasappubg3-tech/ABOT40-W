@@ -337,11 +337,11 @@ def _build_desc(subject, teacher, grade, year, part=''):
     part_str = f" الجزء {part}" if part else ""
     clean_grade = _strip_emoji(grade)
     return (
-        f"ملزمة {subject}{part_str}\n"
-        f"للاستاذ {teacher}\n"
-        f"{clean_grade}\n"
-        f"سنة الاصدار : {year}\n"
-        f"دقة عالية قابلة للسحب"
+        f"⚜️ | ملزمة {subject}{part_str}\n"
+        f"⚜️ | للاستاذ {teacher}\n"
+        f"⚜️ | {clean_grade}\n"
+        f"⚜️ | سنة الاصدار : {year}\n"
+        f"⚜️ | دقة عالية قابلة للسحب"
     )
 
 def _build_btn_name(mlz_type, year):
@@ -558,9 +558,9 @@ async def start_mlz_flow(m, ctx, uid, chat_id) -> bool:
 
     info = await extract_mlz_info(source_text) if source_text else {}
 
-    ctx.user_data['mlz_subject'] = info.get('subject', '')
-    ctx.user_data['mlz_teacher'] = info.get('teacher', '')
-    ctx.user_data['mlz_grade']   = info.get('grade', '')
+    ctx.user_data['mlz_subject'] = _strip_emoji(info.get('subject', ''))
+    ctx.user_data['mlz_teacher'] = _strip_emoji(info.get('teacher', ''))
+    ctx.user_data['mlz_grade']   = _strip_emoji(info.get('grade', ''))
     ctx.user_data['mlz_year']    = info.get('year', '')
     ctx.user_data['mlz_part']    = info.get('part', '')
     ctx.user_data['mlz_type']    = info.get('mlz_type', '') or 'ملزمة'
