@@ -112,15 +112,25 @@ def _extract_info_local(text: str) -> dict:
     if yr:
         result['year'] = yr.group(1)
 
-    # ── الصف: مستوى + نوع اختياري ────────────────────────────────
-    grade_m = _re.search(
-        r'(?:السادس|الخامس|الرابع|الثالث|الثاني|الأول|الاول|السابع|الثامن|التاسع|العاشر)'
+    # ── الصف: مستوى + نوع ────────────────────────────────────────────
+    # الرابع/الخامس/السادس: يجب وجود (علمي أو أدبي) وإلا يُترك الصف فارغاً
+    _BRANCH_RE = r'(?:علمي|أدبي|ادبي)'
+    high_grade_m = _re.search(
+        r'(?:السادس|الخامس|الرابع)\s+' + _BRANCH_RE,
+        cleaned
+    )
+    # الصفوف الأخرى: تقبل أي نوع أو بدون نوع
+    other_grade_m = _re.search(
+        r'(?:الثالث|الثاني|الأول|الاول|السابع|الثامن|التاسع|العاشر)'
         r'(?:\s+(?:علمي|أدبي|ادبي|إعدادي|اعدادي|أعدادي|الإعدادي|الاعدادي|الأعدادي'
         r'|الأعدادية|الاعدادية|متوسط|ابتدائي|ثانوي|تطبيقي|مهني))?',
         cleaned
     )
-    if grade_m:
-        result['grade'] = grade_m.group(0).strip()
+    if high_grade_m:
+        result['grade'] = high_grade_m.group(0).strip()
+    elif other_grade_m:
+        result['grade'] = other_grade_m.group(0).strip()
+    # إذا الصف السادس/الخامس/الرابع موجود بدون تفرع → يُترك فارغاً ليملأه المشرف
 
     # ── المدرس: بعد كلمة الأستاذ/المدرس/الدكتور ──────────────────
     teacher_m = _re.search(
@@ -189,7 +199,7 @@ async def extract_mlz_info(source_text: str) -> dict:
         "استخرج من النص:\n"
         "- subject: اسم المادة الدراسية (أي مادة دراسية عراقية)\n"
         "- teacher: الاسم الكامل لأي شخص مذكور (أستاذ أو مدرس)\n"
-        "- grade: الصف الدراسي (مثل: السادس الإعدادي، الخامس علمي)\n"
+        "- grade: الصف الدراسي — قاعدة مهمة: الصفوف الرابع والخامس والسادس يجب أن تحتوي صراحةً على كلمة (علمي أو أدبي)، مثل: الخامس علمي، السادس أدبي، الرابع علمي — إن لم يُذكر النوع (علمي/أدبي) بوضوح اترك الحقل فارغاً تماماً\n"
         "- year: أي سنة من 4 أرقام (2020-2030)\n"
         "- part: رقم الجزء إن وجد (مثال: 1 أو 2)، اتركه فارغاً إن لم يُذكر\n"
         "- mlz_type: نوع المحتوى (مراجعة أو وزاريات أو واجبات أو ملخص أو أسئلة أو كتاب أو ملزمة)، اتركه فارغاً إن لم يُذكر\n\n"
@@ -204,8 +214,15 @@ async def extract_mlz_info(source_text: str) -> dict:
             if match:
                 gemini = json.loads(match.group())
                 for k in ('subject', 'teacher', 'grade', 'year', 'part', 'mlz_type'):
-                    if not local.get(k) and gemini.get(k, '').strip():
-                        local[k] = gemini[k].strip()
+                    val = gemini.get(k, '').strip()
+                    if not local.get(k) and val:
+                        # الصفوف الرابع/الخامس/السادس يجب أن تحتوي علمي أو أدبي
+                        if k == 'grade':
+                            is_high = _re.search(r'(?:السادس|الخامس|الرابع)', val)
+                            has_branch = _re.search(r'(?:علمي|أدبي|ادبي)', val)
+                            if is_high and not has_branch:
+                                continue  # رفض الصف الناقص
+                        local[k] = val
     except Exception as e:
         logging.warning(f"[MLZ] Gemini enhancement error: {e}")
 
@@ -320,11 +337,11 @@ def _build_desc(subject, teacher, grade, year, part=''):
     part_str = f" الجزء {part}" if part else ""
     clean_grade = _strip_emoji(grade)
     return (
-        f"⚜️ | ملزمة {subject}{part_str}\n"
-        f"⚜️ | للاستاذ {teacher}\n"
-        f"⚜️ | {clean_grade}\n"
-        f"⚜️ | سنة الاصدار : {year}\n"
-        f"⚜️ | دقة عالية قابلة للسحب"
+        f"ملزمة {subject}{part_str}\n"
+        f"للاستاذ {teacher}\n"
+        f"{clean_grade}\n"
+        f"سنة الاصدار : {year}\n"
+        f"دقة عالية قابلة للسحب"
     )
 
 def _build_btn_name(mlz_type, year):
