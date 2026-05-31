@@ -336,8 +336,9 @@ def find_or_build_mlz_path(grade: str, subject: str, teacher: str):
 def _build_desc(subject, teacher, grade, year, part=''):
     part_str = f" الجزء {part}" if part else ""
     clean_grade = _strip_emoji(grade)
+    clean_subject = _strip_emoji(subject).strip()
     return (
-        f"⚜️ | ملزمة {subject}{part_str}\n"
+        f"⚜️ | ملزمة {clean_subject}{part_str}\n"
         f"⚜️ | للاستاذ {teacher}\n"
         f"⚜️ | {clean_grade}\n"
         f"⚜️ | سنة الاصدار : {year}\n"
