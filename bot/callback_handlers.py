@@ -407,6 +407,38 @@ async def cb_manage(update: Update, ctx):
 
         return
 
+    # ── حاسبة القبول الوزاري ─────────────────────────────────────────
+    if d in ("gc_start", "gc_cancel", "gc_restart"):
+        await q.answer()
+        if d in ("gc_cancel",):
+            ctx.user_data.pop("state", None)
+            ctx.user_data.pop("gc_subject_idx", None)
+            ctx.user_data.pop("gc_step", None)
+            ctx.user_data.pop("gc_grades", None)
+            try:
+                await q.edit_message_text("✅ تم إلغاء الحاسبة.")
+            except Exception:
+                pass
+            return
+        # gc_start أو gc_restart — ابدأ من الصفر
+        ctx.user_data["state"]          = "wait_grade_calc"
+        ctx.user_data["gc_subject_idx"] = 0
+        ctx.user_data["gc_step"]        = 0
+        ctx.user_data["gc_grades"]      = {}
+        try:
+            await q.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        await ctx.bot.send_message(
+            chat_id=q.message.chat_id,
+            text=_gc_prompt_text(0, 0),
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("❌ إلغاء", callback_data="gc_cancel")
+            ]])
+        )
+        return
+
     if d == "fr_cancel":
         await q.answer()
         ctx.user_data.pop("state", None)

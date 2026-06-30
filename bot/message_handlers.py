@@ -1,5 +1,70 @@
 from .shared import *
 
+# ── حاسبة القبول الوزاري ─────────────────────────────────────────
+_GC_SUBJECTS = [
+    ("الكيمياء",         "⚗️"),
+    ("الفيزياء",         "⚡"),
+    ("الرياضيات",        "📐"),
+    ("الأحياء",          "🔬"),
+    ("اللغة العربية",    "📖"),
+    ("اللغة الإنجليزية", "🌍"),
+    ("التربية الإسلامية","☪️"),
+]
+_GC_STEPS = ["الفصل الأول", "نصف السنة", "الفصل الثاني"]
+
+def _gc_prompt_text(subject_idx: int, step: int) -> str:
+    name, emoji = _GC_SUBJECTS[subject_idx]
+    step_name = _GC_STEPS[step]
+    done = subject_idx * 3 + step
+    bar = "▓" * subject_idx + "░" * (7 - subject_idx)
+    return (
+        f"📊 *حاسبة القبول الوزاري*\n\n"
+        f"{emoji} *مادة: {name}*\n"
+        f"📝 درجة *{step_name}* (من 100)\n\n"
+        f"أرسل الدرجة كرقم بين 0 و 100\n\n"
+        f"التقدم: {bar}  {done}/21"
+    )
+
+def _gc_calc_result(grades: dict) -> str:
+    raw_avgs = []
+    for i in range(7):
+        g0 = grades.get(f"{i}_0", 0)
+        g1 = grades.get(f"{i}_1", 0)
+        g2 = grades.get(f"{i}_2", 0)
+        raw_avgs.append((g0 + g1 + g2) / 3)
+
+    final_avgs = list(raw_avgs)
+
+    candidates = sorted(
+        [(i, avg) for i, avg in enumerate(raw_avgs) if 40 <= avg < 50],
+        key=lambda x: x[1], reverse=True
+    )[:3]
+    decision_applied = {i for i, _ in candidates}
+    for i in decision_applied:
+        final_avgs[i] = 50.0
+
+    overall = sum(final_avgs) / 7
+    qualified = overall >= 50
+
+    lines = ["📊 *نتيجة حاسبة القبول الوزاري*\n"]
+    for i, (name, emoji) in enumerate(_GC_SUBJECTS):
+        raw = raw_avgs[i]
+        final = final_avgs[i]
+        status = "✅" if final >= 50 else "❌"
+        dec = " _(قرار ⚖️)_" if i in decision_applied else ""
+        lines.append(f"{emoji} *{name}*: {raw:.1f}%{dec} {status}")
+
+    lines.append(f"\n📈 *المعدل النهائي: {overall:.1f}%*")
+    if qualified:
+        lines.append("🎉 *الطالب داخل في الامتحانات الوزارية ✅*")
+    else:
+        lines.append("❌ *الطالب غير مقبول في الامتحانات الوزارية*")
+    if decision_applied:
+        names = "، ".join(_GC_SUBJECTS[i][0] for i in sorted(decision_applied))
+        lines.append(f"\n_⚖️ القرار طُبِّق على: {names}_")
+
+    return "\n".join(lines)
+
 async def cmd_start(update: Update, ctx):
     uid = update.effective_user.id
     ctx.user_data.clear()
@@ -1192,6 +1257,58 @@ async def on_message(update: Update, ctx):
             await m.reply_text("❌ تعذر إرسال فاتورة النجوم حالياً. حاول مرة أخرى لاحقاً.")
         return
 
+    # ── حاسبة القبول الوزاري ─────────────────────────────────────
+    if state == "wait_grade_calc":
+        try:
+            grade = float(text.replace("٫", ".").replace(",", "."))
+            if not (0 <= grade <= 100):
+                raise ValueError
+        except (ValueError, AttributeError):
+            await m.reply_text(
+                "⚠️ أرسل رقماً صحيحاً بين 0 و 100.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("❌ إلغاء", callback_data="gc_cancel")
+                ]])
+            )
+            return
+
+        subject_idx = ctx.user_data.get("gc_subject_idx", 0)
+        step        = ctx.user_data.get("gc_step", 0)
+        grades      = ctx.user_data.get("gc_grades", {})
+
+        grades[f"{subject_idx}_{step}"] = grade
+        ctx.user_data["gc_grades"] = grades
+
+        step += 1
+        if step >= 3:
+            step = 0
+            subject_idx += 1
+
+        if subject_idx >= 7:
+            ctx.user_data.pop("state", None)
+            ctx.user_data.pop("gc_subject_idx", None)
+            ctx.user_data.pop("gc_step", None)
+            ctx.user_data.pop("gc_grades", None)
+            result = _gc_calc_result(grades)
+            await m.reply_text(
+                result,
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔄 حساب مجدداً", callback_data="gc_restart")
+                ]])
+            )
+        else:
+            ctx.user_data["gc_subject_idx"] = subject_idx
+            ctx.user_data["gc_step"]        = step
+            await m.reply_text(
+                _gc_prompt_text(subject_idx, step),
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("❌ إلغاء", callback_data="gc_cancel")
+                ]])
+            )
+        return
+
     # ── انتظار سؤال امتحان ─────────────────────────────────────────
     if state == "wait_exam_q":
         bid = ctx.user_data.pop("exam_q_bid", None)
@@ -1871,6 +1988,28 @@ async def on_message(update: Update, ctx):
                 await set_panel(ctx, chat_id,
                                 f"{btn_id_header(b['id'])}⭐ *{b['label']}*\n_زر أبرز المستخدمين_",
                                 kb_special_quick(b["id"]))
+        elif action == "grade_calc":
+            if is_admin(uid):
+                await set_panel(ctx, chat_id,
+                                f"{btn_id_header(b['id'])}⭐ *{b['label']}*\n_حاسبة القبول الوزاري_",
+                                kb_special_quick(b["id"]))
+            else:
+                await m.reply_text(
+                    "📊 *حاسبة القبول الوزاري*\n\n"
+                    "هذه الأداة تحسب معدلك وتقرر إذا كنت *داخلاً* في الامتحانات الوزارية أم لا.\n\n"
+                    "📋 *المواد السبع:*\n"
+                    "⚗️ الكيمياء  •  ⚡ الفيزياء  •  📐 الرياضيات\n"
+                    "🔬 الأحياء  •  📖 العربية  •  🌍 الإنجليزية  •  ☪️ التربية الإسلامية\n\n"
+                    "📝 *لكل مادة سأطلب منك:*\n"
+                    "درجة الفصل الأول + نصف السنة + الفصل الثاني _(كل واحدة من 100)_\n\n"
+                    "⚖️ *ملاحظة:* الوزارة تمنح 10 درجات قرار لثلاث مواد كحد أقصى _(للمواد بين 40–49)_\n\n"
+                    "اضغط *ابدأ الحساب* للمتابعة 👇",
+                    parse_mode="Markdown",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("🚀 ابدأ الحساب", callback_data="gc_start"),
+                        InlineKeyboardButton("❌ إلغاء",       callback_data="gc_cancel"),
+                    ]])
+                )
         else:
             if is_admin(uid):
                 await set_panel(ctx, chat_id,
