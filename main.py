@@ -3,6 +3,22 @@ from bot.loader import load_bot_symbols
 
 globals().update(load_bot_symbols())
 
+async def _error_handler(update, context):
+    """معالج مركزي للأخطاء."""
+    from telegram.error import Conflict, NetworkError, TimedOut
+    import asyncio
+    err = context.error
+    if isinstance(err, Conflict):
+        logging.warning(
+            "⚠️ تعارض: نسخة أخرى من البوت تعمل في مكان آخر. "
+            "أوقف أي نسخة أخرى حتى يعمل البوت بشكل صحيح."
+        )
+        await asyncio.sleep(5)
+    elif isinstance(err, (NetworkError, TimedOut)):
+        logging.warning(f"خطأ شبكة مؤقت: {err}")
+    else:
+        logging.error(f"خطأ غير متوقع: {err}", exc_info=err)
+
 def main():
     if not BOT_TOKEN:
         logging.error("TELEGRAM_BOT_TOKEN غير موجود!"); return
@@ -37,6 +53,7 @@ def main():
     app.add_handler(PollAnswerHandler(on_poll_answer))
     app.add_handler(CallbackQueryHandler(cb_manage))
     app.add_handler(MessageHandler(media_filter, on_message))
+    app.add_error_handler(_error_handler)
 
     logging.info("البوت يعمل بنظام Long Polling...")
     app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)

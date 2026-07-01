@@ -866,13 +866,33 @@ async def on_message(update: Update, ctx):
 
     # ── انتظار مصدر الكويز التلقائي (نص / ملف / صورة) ───────────
     if state == "wait_quiz_ai_source":
-        bid = ctx.user_data.pop("quiz_ai_bid", None)
-        count = ctx.user_data.pop("quiz_ai_count", 10)
-        ctx.user_data.pop("state", None)
-        if not bid: return
+        bid = ctx.user_data.get("quiz_ai_bid")
+        count = ctx.user_data.get("quiz_ai_count", 10)
+        if not bid: 
+            ctx.user_data.pop("state", None)
+            return
 
         if not get_all_gemini_keys():
+            ctx.user_data.pop("state", None)
+            ctx.user_data.pop("quiz_ai_bid", None)
+            ctx.user_data.pop("quiz_ai_count", None)
             await m.reply_text("❌ خاصية الملء التلقائي تتطلب مفتاح Gemini API."); return
+
+        # التحقق من نوع الرسالة أولاً قبل مسح الحالة
+        import base64 as _b64, io as _io
+        if not (m.text and m.text.strip()) and not m.document and not m.photo:
+            await m.reply_text(
+                "⚠️ نوع الرسالة غير مدعوم.\n\nأرسل:\n• نصاً مباشراً\n• ملف TXT أو PDF\n• صورة تحتوي نصاً",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("إلغاء", callback_data=f"qz_panel_{bid}")
+                ]])
+            )
+            return  # نبقي الحالة حتى يعيد المستخدم المحاولة
+
+        # الآن نمسح الحالة ونبدأ المعالجة
+        ctx.user_data.pop("state", None)
+        ctx.user_data.pop("quiz_ai_bid", None)
+        ctx.user_data.pop("quiz_ai_count", None)
 
         wait_msg = await m.reply_text(f"⏳ جاري توليد {count} سؤال بالذكاء الاصطناعي...")
 
@@ -882,7 +902,6 @@ async def on_message(update: Update, ctx):
         if m.text and m.text.strip():
             questions, error = await generate_quiz_questions(m.text.strip(), count)
         elif m.document:
-            import base64 as _b64, io as _io
             doc = m.document
             mime = doc.mime_type or ""
             tg_file = await ctx.bot.get_file(doc.file_id)
@@ -900,7 +919,6 @@ async def on_message(update: Update, ctx):
                     source_text = buf.read().decode("latin-1", errors="ignore")
                 questions, error = await generate_quiz_questions(source_text, count)
         elif m.photo:
-            import base64 as _b64, io as _io
             photo = m.photo[-1]
             tg_file = await ctx.bot.get_file(photo.file_id)
             buf = _io.BytesIO()
@@ -908,13 +926,15 @@ async def on_message(update: Update, ctx):
             buf.seek(0)
             b64 = _b64.b64encode(buf.read()).decode()
             questions, error = await generate_quiz_questions_from_file(b64, "image/jpeg", count)
-        else:
-            await wait_msg.edit_text("⚠️ أرسل نصاً أو ملفاً أو صورة."); return
 
         if error:
-            await wait_msg.edit_text(error); return
+            await wait_msg.edit_text(
+                f"{error}\n\n💡 يمكنك المحاولة مرة أخرى بالضغط على زر الملء التلقائي.",
+            )
+            return
         if not questions:
-            await wait_msg.edit_text("⚠️ لم يتم توليد أي سؤال من المصدر المقدم."); return
+            await wait_msg.edit_text("⚠️ لم يتم توليد أي سؤال من المصدر المقدم. حاول مع نص أطول أو أكثر وضوحاً.")
+            return
 
         added = 0
         for q_data in questions:
@@ -941,6 +961,7 @@ async def on_message(update: Update, ctx):
             f"📊 إجمالي الأسئلة في الكويز: *{total}*",
             parse_mode="Markdown"
         )
+        await m.reply_text("🔄", reply_markup=build_kb(uid, pid))
         await set_panel(ctx, chat_id,
                         f"📊 *{b['label'] if b else 'كويز'}*\n_{total} سؤال_",
                         kb_quiz_panel(bid))
