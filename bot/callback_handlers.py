@@ -11,31 +11,24 @@ async def cb_manage(update: Update, ctx):
 
     # ── معالجة تنبيهات الاشتراك (لجميع المستخدمين) ───────────────
     if (d.startswith("notif_ok_") or d.startswith("notif_skip_")
-            or d.startswith("notif_confirm_yes_") or d.startswith("notif_confirm_no_")):
+            or d.startswith("notif_decline_") or d.startswith("notif_anger_")):
 
-        # ─ زر "متأكد لا" (المرة الرابعة+) ─────────────────────────
-        if d.startswith("notif_confirm_no_"):
-            await q.answer("روح مزاعلين 😤", show_alert=True)
+        # ─ رفض نهائي صامت — "نعم متأكد" (المرة الثالثة) ────────────
+        if d.startswith("notif_decline_"):
+            bid_str = d[len("notif_decline_"):]
+            await q.answer()
             try: await q.message.delete()
             except Exception: pass
+            await deliver_denied_content(ctx.bot, q.message.chat_id, bid_str)
             return
 
-        # ─ زر "متأكد نعم" (المرة الرابعة+) ────────────────────────
-        if d.startswith("notif_confirm_yes_"):
+        # ─ رفض نهائي غاضب — "كافي لا تلح" (المرة الرابعة) ─────────
+        if d.startswith("notif_anger_"):
+            bid_str = d[len("notif_anger_"):]
+            await q.answer("روح مزاعلين ):", show_alert=True)
             try: await q.message.delete()
             except Exception: pass
-            try:
-                await ctx.bot.send_message(
-                    chat_id=q.message.chat_id,
-                    text="احسك تريد تشترك بس مستحي 🙃",
-                )
-            except Exception: pass
-            chan = get_setting("notif_channel", "").strip()
-            if chan:
-                url = chan if chan.startswith("http") else f"https://t.me/{chan.lstrip('@')}"
-                try:
-                    await ctx.bot.send_message(chat_id=q.message.chat_id, text=url)
-                except Exception: pass
+            await deliver_denied_content(ctx.bot, q.message.chat_id, bid_str)
             return
 
         # ─ زر "نعم اشتركت" ─────────────────────────────────────────
@@ -87,32 +80,29 @@ async def cb_manage(update: Update, ctx):
         # ─ زر "لا لاحقاً" ──────────────────────────────────────────
         if d.startswith("notif_skip_"):
             bid_str  = d[len("notif_skip_"):]
-            ok_text  = get_setting("notif_ok_text",    "✅ نعم، اشتركت")
-            can_text = get_setting("notif_cancel_text", "❌ لا، لاحقاً")
             chan     = get_setting("notif_channel", "").strip()
             no_count = ctx.user_data.get("sub_no_count", 0) + 1
             ctx.user_data["sub_no_count"] = no_count
+            url = (chan if chan.startswith("http") else f"https://t.me/{chan.lstrip('@')}") if chan else None
 
-            # مرة 1 → منبثقة
+            # ── مرة 1 → منبثقة ──────────────────────────────────────
             if no_count == 1:
-                await q.answer("حسنا ):", show_alert=True)
+                await q.answer("ಥ╭╮ಥ راح ابجي", show_alert=True)
                 return
 
-            # مرة 2 → منبثقة
+            # ── مرة 2 → منبثقة ──────────────────────────────────────
             if no_count == 2:
                 await q.answer("ترا بديت ازعل منك /:", show_alert=True)
                 return
 
-            # مرة 3 → رسالة عادية مع زري نعم/لا
+            # ── مرة 3 → رسالة "متأكد ما تريد تشترك؟" + زرين ────────
             if no_count == 3:
                 await q.answer()
                 rows = []
-                if chan:
-                    url = chan if chan.startswith("http") else f"https://t.me/{chan.lstrip('@')}"
-                    rows.append([InlineKeyboardButton("📢 انضم للقناة الآن", url=url)])
+                if url:
+                    rows.append([InlineKeyboardButton("لا راح اشترك", url=url)])
                 rows.append([
-                    InlineKeyboardButton(ok_text,  callback_data=f"notif_ok_{bid_str}"),
-                    InlineKeyboardButton(can_text, callback_data=f"notif_skip_{bid_str}"),
+                    InlineKeyboardButton("نعم متأكد", callback_data=f"notif_decline_{bid_str}"),
                 ])
                 try:
                     await ctx.bot.send_message(
@@ -123,40 +113,49 @@ async def cb_manage(update: Update, ctx):
                 except Exception: pass
                 return
 
-            # مرة 4+ → رسالة تأكيد نعم/لا
-            await q.answer()
-            # مرة 6+ → ملصق + نص عشوائي أولاً
-            if no_count >= 6:
-                import random as _random
-                stickers_raw = get_setting("notif_decline_stickers", "")
-                texts_raw    = get_setting("notif_decline_texts", "")
-                stickers = [s.strip() for s in stickers_raw.split("\n") if s.strip()]
-                texts    = [t.strip() for t in texts_raw.split("\n") if t.strip()]
-                if stickers:
-                    try:
-                        await ctx.bot.send_sticker(
-                            chat_id=q.message.chat_id,
-                            sticker=_random.choice(stickers)
-                        )
-                    except Exception: pass
-                if texts:
-                    try:
-                        await ctx.bot.send_message(
-                            chat_id=q.message.chat_id,
-                            text=_random.choice(texts)
-                        )
-                    except Exception: pass
+            # ── مرة 4 → رسالة "احسك تريد تشترك بس مستحي" + 3 أزرار ─
+            if no_count == 4:
+                await q.answer()
+                rows = []
+                if url:
+                    rows.append([
+                        InlineKeyboardButton("لا اي وراح اشترك", url=url),
+                        InlineKeyboardButton("لا وراح اشترك",    url=url),
+                    ])
+                rows.append([
+                    InlineKeyboardButton("كافي لا تلح", callback_data=f"notif_anger_{bid_str}"),
+                ])
+                try:
+                    await ctx.bot.send_message(
+                        chat_id=q.message.chat_id,
+                        text="احسك تريد تشترك بس مستحي 🙃",
+                        reply_markup=InlineKeyboardMarkup(rows)
+                    )
+                except Exception: pass
+                return
 
-            try:
-                await ctx.bot.send_message(
-                    chat_id=q.message.chat_id,
-                    text="متأكد ما تريد تشترك؟",
-                    reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("نعم 😊", callback_data=f"notif_confirm_yes_{bid_str}"),
-                        InlineKeyboardButton("لا 😤",  callback_data=f"notif_confirm_no_{bid_str}"),
-                    ]])
-                )
-            except Exception: pass
+            # ── مرة 5+ → ملصق + نص عشوائي + الملف المطلوب مباشرة ───
+            await q.answer()
+            import random as _random
+            stickers_raw = get_setting("notif_decline_stickers", "")
+            texts_raw    = get_setting("notif_decline_texts",    "")
+            stickers = [s.strip() for s in stickers_raw.split("\n") if s.strip()]
+            texts    = [t.strip() for t in texts_raw.split("\n")    if t.strip()]
+            if stickers:
+                try:
+                    await ctx.bot.send_sticker(
+                        chat_id=q.message.chat_id,
+                        sticker=_random.choice(stickers)
+                    )
+                except Exception: pass
+            if texts:
+                try:
+                    await ctx.bot.send_message(
+                        chat_id=q.message.chat_id,
+                        text=_random.choice(texts)
+                    )
+                except Exception: pass
+            await deliver_denied_content(ctx.bot, q.message.chat_id, bid_str)
             return
 
         return

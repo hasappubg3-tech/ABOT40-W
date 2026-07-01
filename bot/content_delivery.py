@@ -231,6 +231,42 @@ async def resend_notif_gate(target, uid, bid):
     except Exception:
         pass
 
+async def deliver_denied_content(bot, chat_id, bid_str):
+    """يرسل المحتوى المطلوب مباشرة بعد الرفض النهائي — يتجاوز فحص الاشتراك."""
+    if not bid_str or not str(bid_str).isdigit():
+        return
+    bid_int = int(bid_str)
+    items = get_items(bid_int)
+    if not items:
+        return
+    b       = get_btn(bid_int)
+    no_cap  = (b.get("no_caption", 0) or 0) if b else 0
+    extra   = get_global_caption() if not no_cap else ""
+    no_btn  = (b.get("no_btn_caption", 0) or 0) if b else 0
+    markup  = build_caption_btn_markup(get_caption_buttons() if not no_btn else [])
+
+    class _T:
+        def __init__(self, b, cid):
+            self._b = b; self.chat_id = cid
+        def get_bot(self): return self._b
+        async def reply_text(self, txt, **kw):
+            return await self._b.send_message(chat_id=self.chat_id, text=txt, **kw)
+        async def reply_photo(self, p, **kw):
+            return await self._b.send_photo(chat_id=self.chat_id, photo=p, **kw)
+        async def reply_document(self, d, **kw):
+            return await self._b.send_document(chat_id=self.chat_id, document=d, **kw)
+        async def reply_video(self, v, **kw):
+            return await self._b.send_video(chat_id=self.chat_id, video=v, **kw)
+        async def reply_audio(self, a, **kw):
+            return await self._b.send_audio(chat_id=self.chat_id, audio=a, **kw)
+
+    target = _T(bot, chat_id)
+    for item in items:
+        try:
+            await send_file_item(target, item, extra_caption=extra, reply_markup=markup, bot=bot)
+        except Exception as e:
+            logging.warning(f"deliver_denied_content: {e}")
+
 # ── عرض عناصر المحتوى للمستخدم ───────────────────────────────────
 async def send_items(m, bid, uid=None, bot=None):
     if uid and not is_admin(uid):
