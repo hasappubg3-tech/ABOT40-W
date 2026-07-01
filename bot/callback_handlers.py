@@ -13,7 +13,7 @@ async def cb_manage(update: Update, ctx):
     if (d.startswith("notif_ok_")      or d.startswith("notif_skip_")
             or d.startswith("notif_decline_") or d.startswith("notif_anger_")
             or d.startswith("notif_chan_")    or d.startswith("notif_check_")
-            or d.startswith("notif_chkno_")):
+            or d.startswith("notif_chkno_")  or d.startswith("notif_check2_")):
 
         # ─── دالة مساعدة: إرسال رسالة الشكر وتسليم الملف ────────────
         async def _thanks_and_deliver(bid_str_v, chat_id_v):
@@ -37,12 +37,15 @@ async def cb_manage(update: Update, ctx):
                 except Exception: pass
             await deliver_denied_content(ctx.bot, chat_id_v, bid_str_v)
 
-        # ─── دالة مساعدة: إرسال "ها اشتركت؟" مع زريّ اي/لا ─────────
+        # ─── دالة مساعدة: إرسال "ها اشتركت" صامتة ──────────────────
         async def _send_check_msg(bid_str_v, chat_id_v):
+            chan_v = get_setting("notif_channel", "").strip()
+            url_v  = (chan_v if chan_v.startswith("http") else f"https://t.me/{chan_v.lstrip('@')}") if chan_v else None
             try:
                 sent = await ctx.bot.send_message(
                     chat_id=chat_id_v,
                     text="ها اشتركت؟ 🙂",
+                    disable_notification=True,
                     reply_markup=InlineKeyboardMarkup([[
                         InlineKeyboardButton("اي ✅", callback_data=f"notif_check_{bid_str_v}"),
                         InlineKeyboardButton("لا ❌", callback_data=f"notif_chkno_{bid_str_v}"),
@@ -52,17 +55,53 @@ async def cb_manage(update: Update, ctx):
             except Exception:
                 return None
 
-        # ─ "اي" — تحقق من الاشتراك بعد توجيه للقناة ─────────────────
+        # ─ "اي" — تحقق أول من الاشتراك ───────────────────────────────
         if d.startswith("notif_check_") and not d.startswith("notif_chkno_"):
             bid_str    = d[len("notif_check_"):]
             sub_status = await is_subscribed(ctx.bot, uid)
             if sub_status is False:
-                await q.answer("لسا ما اشتركت 😔، اشترك أولاً ثم اضغط اي مجدداً!", show_alert=True)
+                # كذّاب — أرسل رسالة "ترا ادري بيك" مع زر القناة + "هسا اشتركت"
+                await q.answer()
+                chan_v = get_setting("notif_channel", "").strip()
+                url_v  = (chan_v if chan_v.startswith("http") else f"https://t.me/{chan_v.lstrip('@')}") if chan_v else None
+                rows_v = []
+                if url_v:
+                    rows_v.append([InlineKeyboardButton("📢 القناة", url=url_v)])
+                rows_v.append([InlineKeyboardButton("هسا اشتركت ✅", callback_data=f"notif_check2_{bid_str}")])
+                try:
+                    sent_v = await ctx.bot.send_message(
+                        chat_id=q.message.chat_id,
+                        text="ترا ادري بيك ما مشترك 😏",
+                        reply_markup=InlineKeyboardMarkup(rows_v)
+                    )
+                    ctx.user_data["notif_adry_mid"] = sent_v.message_id
+                except Exception: pass
                 return
+            # مشترك ✓
             await q.answer()
             try: await q.message.delete()
             except Exception: pass
             await _thanks_and_deliver(bid_str, q.message.chat_id)
+            return
+
+        # ─ "هسا اشتركت" — تحقق ثانٍ ─────────────────────────────────
+        if d.startswith("notif_check2_"):
+            bid_str    = d[len("notif_check2_"):]
+            sub_status = await is_subscribed(ctx.bot, uid)
+            chat_id_v  = q.message.chat_id
+            # احذف رسالة "ترا ادري بيك" دائماً
+            for mid in [q.message.message_id, ctx.user_data.pop("notif_adry_mid", None)]:
+                if mid:
+                    try: await ctx.bot.delete_message(chat_id=chat_id_v, message_id=mid)
+                    except Exception: pass
+            if sub_status is False:
+                # كذّاب ثاني — popup + تسليم الملف قسراً
+                await q.answer("الجذاب الله يخلي بالنار 🔥", show_alert=True)
+                await deliver_denied_content(ctx.bot, chat_id_v, bid_str)
+                return
+            # مشترك ✓
+            await q.answer()
+            await _thanks_and_deliver(bid_str, chat_id_v)
             return
 
         # ─ "لا" — إغلاق رسالة "ها اشتركت؟" ──────────────────────────
@@ -163,9 +202,9 @@ async def cb_manage(update: Update, ctx):
             url = (chan if chan.startswith("http") else f"https://t.me/{chan.lstrip('@')}") if chan else None
             chat_id_v = q.message.chat_id
 
-            # ── مرة 1 → حذف الرسالة + تسليم الملف (بلا منبثقة) ────
+            # ── مرة 1 → منبثقة + حذف الرسالة + تسليم الملف ─────────
             if no_count == 1:
-                await q.answer()
+                await q.answer("Ó╭╮Ò", show_alert=True)
                 try: await q.message.delete()
                 except Exception: pass
                 await deliver_denied_content(ctx.bot, chat_id_v, bid_str)
