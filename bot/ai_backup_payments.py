@@ -99,7 +99,7 @@ async def _call_gemini_vision(client: httpx.AsyncClient, prompt: str, images: li
                 finish = candidate.get("finishReason", "")
                 if finish in ("SAFETY", "RECITATION", "OTHER"):
                     logging.warning(f"Gemini Vision blocked: {finish}")
-                    return None
+                    return "__SAFETY_BLOCKED__"
                 text = candidate.get("content", {}).get("parts", [{}])[0].get("text", "")
                 if text:
                     logging.info(f"Gemini Vision raw response: {text[:300]}")
@@ -132,7 +132,10 @@ async def _process_image_batch(wait_msg, m, ctx, uid, pid, images: list, btn_typ
         try:
             async with httpx.AsyncClient() as client:
                 raw = await _call_gemini_vision(client, prompt, [img])
+            if raw == "__SAFETY_BLOCKED__":
+                continue
             if not raw:
+                await notify_admin_ai_exhausted("(أثناء استخراج أزرار من صورة)")
                 continue
             json_match = re.search(r'\{[\s\S]*\}', raw)
             if not json_match:
@@ -200,7 +203,8 @@ async def generate_quiz_questions(source_text: str, count: int):
         async with httpx.AsyncClient() as client:
             result = await _call_gemini(client, prompt)
         if not result:
-            return None, "❌ لم يستجب الذكاء الاصطناعي. حاول مجدداً."
+            await notify_admin_ai_exhausted("(أثناء توليد أسئلة كويز من نص)")
+            return None, AI_DOWN_MESSAGE
         json_match = re.search(r'\[[\s\S]*\]', result)
         if not json_match:
             return None, "❌ لم يتمكن الذكاء الاصطناعي من توليد الأسئلة من هذا النص."
@@ -237,8 +241,11 @@ async def generate_quiz_questions_from_file(b64_data: str, mime_type: str, count
         images = [{"data": b64_data, "mime": mime_type}]
         async with httpx.AsyncClient() as client:
             result = await _call_gemini_vision(client, prompt, images)
+        if result == "__SAFETY_BLOCKED__":
+            return None, "⚠️ لا يمكن معالجة هذا الملف بسبب سياسة الاستخدام."
         if not result:
-            return None, "❌ لم يستجب الذكاء الاصطناعي."
+            await notify_admin_ai_exhausted("(أثناء توليد أسئلة كويز من ملف)")
+            return None, AI_DOWN_MESSAGE
         json_match = re.search(r'\[[\s\S]*\]', result)
         if not json_match:
             return None, "❌ لم يتمكن الذكاء الاصطناعي من توليد الأسئلة من هذا الملف."
@@ -289,12 +296,13 @@ async def process_ai_request(user_request: str, current_btns: list = None):
             if raw:
                 action, operations, del_idx = _parse_ai_response(raw)
                 return action, operations, del_idx, None
-            return None, [], [], "⚠️ جميع مفاتيح Gemini وصلت لحد الطلبات. حاول لاحقاً."
+            await notify_admin_ai_exhausted("(أثناء تعديل الأزرار عبر AI)")
+            return None, [], [], AI_DOWN_MESSAGE
         except json.JSONDecodeError:
             return None, [], [], "⚠️ لم أتمكن من تفسير رد الذكاء الاصطناعي. حاول مرة أخرى."
         except Exception as e:
             logging.warning(f"Gemini exception: {e}")
-    return None, [], [], "⚠️ تعذّر الاتصال بـ Gemini. تحقق من المفاتيح وحاول مرة أخرى."
+    return None, [], [], AI_DOWN_MESSAGE
 
 # ── النسخ الاحتياطي ───────────────────────────────────────────────
 async def send_backup(bot, chat_id: int):
@@ -414,8 +422,12 @@ async def _ai_chat_respond_inner(uid: int, text: str = None, image_b64: str = No
             logging.error(f"ai_chat_respond vision error: {e}")
             return "⚠️ تعذّر تحليل الصورة. حاول مرة أخرى."
 
+        if answer == "__SAFETY_BLOCKED__":
+            return "⚠️ لا يمكن الإجابة على هذا السؤال بسبب سياسة الاستخدام."
+
         if not answer:
-            return "⚠️ لم يستجب الذكاء الاصطناعي. حاول مرة أخرى."
+            await notify_admin_ai_exhausted("(أثناء الرد على سؤال بصورة)")
+            return AI_DOWN_MESSAGE
 
         # حفظ في الذاكرة
         if memory_on:
@@ -465,7 +477,8 @@ async def _ai_chat_respond_inner(uid: int, text: str = None, image_b64: str = No
                     logging.warning(f"ai_chat text error key ...{key[-6:]}: {e}")
 
         if not answer:
-            return "⚠️ جميع مفاتيح Gemini وصلت للحد المسموح أو تعذّر الاتصال. حاول لاحقاً."
+            await notify_admin_ai_exhausted("(أثناء الرد على سؤال نصي في محادثة الذكاء الاصطناعي)")
+            return AI_DOWN_MESSAGE
 
         # حفظ في الذاكرة
         if memory_on:

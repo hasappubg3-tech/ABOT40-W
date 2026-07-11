@@ -22,6 +22,39 @@ os.makedirs(MEDIA_DIR, exist_ok=True)
 
 GEMINI_MODEL = "gemini-2.5-flash"
 
+# حاوية مشتركة للحالة وقت التشغيل (كائن قابل للتعديل يبقى نفسه عبر كل الوحدات
+# بعد الدمج في loader.py — التعديل عليه بالمكان يظهر في كل مكان، بعكس إعادة
+# ربط اسم متغير عادي).
+RUNTIME = {}
+
+AI_DOWN_MESSAGE = (
+    "😔 عذراً، توقف الذكاء الاصطناعي عن العمل مؤقتاً.\n"
+    "تم إبلاغ المشرفين لحل المشكلة بأسرع وقت، حاول مرة أخرى بعد قليل 🙏"
+)
+
+_last_ai_down_alert = 0
+AI_DOWN_ALERT_COOLDOWN = 600  # ثانية — لتجنب إغراق المشرف بتنبيهات متكررة
+
+async def notify_admin_ai_exhausted(note: str = ""):
+    """يرسل تنبيهاً خاصاً للمشرف الرئيسي عند نفاد جميع مفاتيح Gemini."""
+    global _last_ai_down_alert
+    now = _time.time()
+    if now - _last_ai_down_alert < AI_DOWN_ALERT_COOLDOWN:
+        return
+    _last_ai_down_alert = now
+    sid = os.environ.get("SUPER_ADMIN_ID", "").strip()
+    bot = RUNTIME.get("bot")
+    if not (sid.isdigit() and bot):
+        return
+    try:
+        text = "🚨 *تنبيه:* نفدت جميع مفاتيح Gemini API وتوقف الذكاء الاصطناعي عن العمل."
+        if note:
+            text += f"\n{note}"
+        text += "\n\nيرجى إضافة مفاتيح جديدة من الإعدادات ← مفاتيح API في أقرب وقت."
+        await bot.send_message(chat_id=int(sid), text=text, parse_mode="Markdown")
+    except Exception as e:
+        logging.warning(f"تعذّر إرسال تنبيه نفاد مفاتيح Gemini للمشرف: {e}")
+
 MONGODB_URI = os.environ.get("MONGODB_URI", "")
 
 _mongo_client = None

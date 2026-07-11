@@ -57,6 +57,7 @@ async def _cd_auto_update_job(ctx):
 
 # ── إعداد البوت ──────────────────────────────────────────────────
 async def post_init(app):
+    RUNTIME["bot"] = app.bot
     sid = os.environ.get("SUPER_ADMIN_ID", "").strip()
     if sid.isdigit() and not is_admin(int(sid)):
         add_admin(int(sid)); logging.info(f"Super admin {sid} added.")
