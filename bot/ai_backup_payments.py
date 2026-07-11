@@ -72,7 +72,7 @@ async def _download_image_base64(bot, file_id: str):
     buf.seek(0)
     return base64.b64encode(buf.read()).decode(), "image/jpeg"
 
-GEMINI_VISION_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.0-flash-lite"]
+GEMINI_VISION_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.0-flash-lite"]
 
 async def _call_gemini_vision(client: httpx.AsyncClient, prompt: str, images: list):
     """يستدعي Gemini Vision API مع تدوير المفاتيح والنماذج تلقائياً."""
@@ -83,6 +83,8 @@ async def _call_gemini_vision(client: httpx.AsyncClient, prompt: str, images: li
     for model in GEMINI_VISION_MODELS:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
         for key in get_all_gemini_keys():
+            if len(key) < 20:
+                continue
             try:
                 resp = await client.post(url, params={"key": key}, json=payload, timeout=60)
                 if resp.status_code in (429, 503):
@@ -164,6 +166,8 @@ async def _call_gemini(client: httpx.AsyncClient, prompt: str):
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
     for key in get_all_gemini_keys():
+        if len(key) < 20:
+            continue
         resp = await client.post(url, params={"key": key}, json=payload, timeout=60)
         if resp.status_code in (429, 503):
             logging.warning(f"Gemini key ...{key[-6:]} rate-limited, trying next key...")
