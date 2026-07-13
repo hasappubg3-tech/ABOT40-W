@@ -67,6 +67,7 @@ def init_db():
     mdb["btn_twins"].create_index([("b", ASCENDING)], unique=True)
     mdb["item_twins"].create_index([("a", ASCENDING)], unique=True)
     mdb["item_twins"].create_index([("b", ASCENDING)], unique=True)
+    mdb["emoji_aliases"].create_index([("alias", ASCENDING)], unique=True)
     logging.info("MongoDB: تم تهيئة الفهارس.")
 
 # ── القوائم المرتبطة (مزامنة تلقائية بين قائمتين توأمتين) ──────────
@@ -1357,6 +1358,24 @@ def get_quiz_results_batch(uid: int, bids: list) -> dict:
         return {}
     docs = list(_col("quiz_results").find({"user_id": uid, "button_id": {"$in": list(bids)}}))
     return {d["button_id"]: d for d in docs}
+
+# ── رموز الإيموجي المتحركة ────────────────────────────────────────
+def save_emoji_alias(alias: str, emoji_id: str, fallback: str, added_by: int):
+    """يحفظ رمزاً مخصصاً للإيموجي المتحرك أو يحدّثه إن كان موجوداً."""
+    _col("emoji_aliases").update_one(
+        {"alias": alias},
+        {"$set": {"alias": alias, "emoji_id": emoji_id, "fallback": fallback, "added_by": added_by}},
+        upsert=True
+    )
+
+def get_emoji_alias(alias: str):
+    return _d(_col("emoji_aliases").find_one({"alias": alias}))
+
+def get_all_emoji_aliases() -> list:
+    return [_d(d) for d in _col("emoji_aliases").find().sort("alias", 1)]
+
+def delete_emoji_alias(alias: str):
+    _col("emoji_aliases").delete_one({"alias": alias})
 
 # ── إحصائيات المستخدمين ──────────────────────────────────────────
 def update_user_info(uid, username=None, first_name=None):

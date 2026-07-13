@@ -339,6 +339,35 @@ async def on_message(update: Update, ctx):
     if not is_admin(uid) and not check_rate_limit(uid, 'msg'):
         return
 
+    # ── كشف إيموجي متحرك تلقائياً (للمشرفين فقط، بدون حالة نشطة) ──
+    if is_admin(uid) and not state:
+        all_entities = list(m.entities or []) + list(m.caption_entities or [])
+        custom_emoji_ents = [e for e in all_entities
+                             if e.type == MessageEntity.CUSTOM_EMOJI and e.custom_emoji_id]
+        if custom_emoji_ents:
+            source_text = m.text or m.caption or ""
+            seen_ids: set = set()
+            pending = []
+            for e in custom_emoji_ents:
+                eid = e.custom_emoji_id
+                if eid not in seen_ids:
+                    seen_ids.add(eid)
+                    fallback = source_text[e.offset:e.offset + e.length] if source_text else "\u2b50"
+                    pending.append({"emoji_id": eid, "fallback": fallback})
+            if pending:
+                ctx.user_data["state"] = "wait_emoji_alias"
+                ctx.user_data["pending_emoji"] = pending[0]
+                ctx.user_data["pending_emoji_queue"] = pending[1:]
+                count = len(pending)
+                await m.reply_text(
+                    f"\U0001f3a8 تم اكتشاف *{count}* إيموجي متحرك!\n\n"
+                    "أرسل الرمز الذي تريد استخدامه في النصوص\n"
+                    "مثال: `:نجمة:` أو `:fire:` أو أي اسم بين نقطتين\n\n"
+                    "أو أرسل `تجاهل` للتخطي.",
+                    parse_mode="Markdown"
+                )
+                return
+
     # ── وضع محادثة AI للسادس العلمي ──────────────────────────────
     if state == "ai_chat_mode":
         # إذا ضغط أي زر من أزرار البوت → خروج من وضع AI تلقائياً
@@ -1340,6 +1369,54 @@ async def on_message(update: Update, ctx):
             "✅ تم حفظ رابط القناة.",
             kb_library_settings())
         await m.reply_text("✅ تم حفظ رابط القناة.", reply_markup=build_kb(uid, pid))
+        return
+
+    # ── انتظار اسم رمز الإيموجي المتحرك ─────────────────────────────
+    if state == "wait_emoji_alias":
+        import re as _re_ea
+        if text in ("\u062a\u062c\u0627\u0647\u0644", "skip"):
+            queue = ctx.user_data.get("pending_emoji_queue", [])
+            if queue:
+                nxt = queue.pop(0)
+                ctx.user_data["pending_emoji"] = nxt
+                ctx.user_data["pending_emoji_queue"] = queue
+                await m.reply_text(
+                    "\u23ed\ufe0f \u062a\u0645 \u0627\u0644\u062a\u062e\u0637\u064a.\n\n\u0623\u0631\u0633\u0644 \u0627\u0644\u0631\u0645\u0632 \u0644\u0644\u0625\u064a\u0645\u0648\u062c\u064a \u0627\u0644\u062a\u0627\u0644\u064a (\u0645\u062b\u0627\u0644: `:نجمة:`) \u0623\u0648 `تجاهل`:",
+                    parse_mode="Markdown"
+                )
+            else:
+                ctx.user_data.pop("state", None)
+                ctx.user_data.pop("pending_emoji", None)
+                ctx.user_data.pop("pending_emoji_queue", None)
+                await m.reply_text("\u2705 \u062a\u0645 \u0625\u0646\u0647\u0627\u0621 \u062a\u0633\u062c\u064a\u0644 \u0627\u0644\u0625\u064a\u0645\u0648\u062c\u064a\u0627\u062a.", reply_markup=build_kb(uid, pid))
+            return
+        alias_text = text.strip()
+        ma = _re_ea.match(r"^:([^:\s]+):$", alias_text) or _re_ea.match(r"^(\S+)$", alias_text)
+        if not ma:
+            await m.reply_text("\u26a0\ufe0f \u0627\u0644\u0631\u0645\u0632 \u063a\u064a\u0631 \u0635\u062d\u064a\u062d. \u0623\u0631\u0633\u0644\u0647 \u0628\u0627\u0644\u0634\u0643\u0644 `:اسم:` \u0645\u062b\u0644 `:نجمة:`"); return
+        alias = ma.group(1)
+        pending = ctx.user_data.get("pending_emoji")
+        if not pending:
+            ctx.user_data.pop("state", None); return
+        save_emoji_alias(alias, pending["emoji_id"], pending["fallback"], uid)
+        queue = ctx.user_data.get("pending_emoji_queue", [])
+        if queue:
+            nxt = queue.pop(0)
+            ctx.user_data["pending_emoji"] = nxt
+            ctx.user_data["pending_emoji_queue"] = queue
+            await m.reply_text(
+                f"\u2705 \u062a\u0645 \u062d\u0641\u0638 `:{alias}:` \u0628\u0646\u062c\u0627\u062d!\n\n\u0627\u0644\u0625\u064a\u0645\u0648\u062c\u064a \u0627\u0644\u062a\u0627\u0644\u064a \u2014 \u0623\u0631\u0633\u0644 \u0631\u0645\u0632\u0647 \u0623\u0648 `تجاهل`:",
+                parse_mode="Markdown"
+            )
+        else:
+            ctx.user_data.pop("state", None)
+            ctx.user_data.pop("pending_emoji", None)
+            ctx.user_data.pop("pending_emoji_queue", None)
+            await m.reply_text(
+                f"\u2705 \u062a\u0645 \u062d\u0641\u0638 `:{alias}:` \u0628\u0646\u062c\u0627\u062d!\n\n\u0627\u0643\u062a\u0628 `:{alias}:` \u0641\u064a \u0623\u064a \u0646\u0635 \u0645\u062d\u062a\u0648\u0649 \u0648\u0633\u064a\u0638\u0647\u0631 \u0627\u0644\u0625\u064a\u0645\u0648\u062c\u064a \u0627\u0644\u0645\u062a\u062d\u0631\u0643.",
+                parse_mode="Markdown",
+                reply_markup=build_kb(uid, pid)
+            )
         return
 
     if state == "wait_phrase_text":

@@ -798,7 +798,30 @@ def kb_settings():
          InlineKeyboardButton("💬 العبارات التحفيزية",              callback_data="st_phrases")],
         [InlineKeyboardButton("⭐ الأزرار المميزة",                 callback_data="st_specials"),
          InlineKeyboardButton("🤖 إعدادات AI",                    callback_data="st_ai_settings")],
-        [InlineKeyboardButton(f"📚 المكتبة {lib_icon}",            callback_data="st_library")],
+        [InlineKeyboardButton(f"📚 المكتبة {lib_icon}",            callback_data="st_library"),
+         InlineKeyboardButton("🎨 رموز الإيموجي",                 callback_data="st_emoji")],
+    ])
+
+def kb_emoji_aliases():
+    """لوحة إدارة رموز الإيموجي المتحركة."""
+    aliases = get_all_emoji_aliases()
+    rows = []
+    for a in aliases:
+        alias = a['alias']
+        fb    = a.get('fallback', '⭐')
+        rows.append([InlineKeyboardButton(
+            f"{fb} :{alias}:",
+            callback_data=f"st_emoji_view_{alias}"
+        )])
+    if not aliases:
+        rows.append([InlineKeyboardButton("لا توجد رموز مسجّلة بعد", callback_data="noop")])
+    rows.append([InlineKeyboardButton("رجوع", callback_data="st_back")])
+    return InlineKeyboardMarkup(rows)
+
+def kb_emoji_alias_detail(alias: str):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"🗑 حذف :{alias}:", callback_data=f"st_emoji_del_{alias}")],
+        [InlineKeyboardButton("رجوع", callback_data="st_emoji")],
     ])
 
 def kb_library_settings():

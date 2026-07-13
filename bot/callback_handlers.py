@@ -1513,6 +1513,48 @@ async def cb_manage(update: Update, ctx):
                                   reply_markup=kb_settings())
         return
 
+    # ── رموز الإيموجي المتحركة ───────────────────────────────────
+    if d == "st_emoji":
+        aliases = get_all_emoji_aliases()
+        count = len(aliases)
+        await q.edit_message_text(
+            f"🎨 *رموز الإيموجي المتحركة* ({count})\n\n"
+            f"أرسل لي إيموجي متحركاً في أي وقت وسأطلب منك رمزه تلقائياً.\n"
+            f"ثم استخدم الرمز في أي نص محتوى بالشكل `:اسم:`\n\n"
+            f"مثال: `:نجمة:` يتحول إلى الإيموجي المتحرك عند عرضه للمستخدم.",
+            parse_mode="Markdown",
+            reply_markup=kb_emoji_aliases()
+        )
+        return
+
+    if d.startswith("st_emoji_view_"):
+        alias = d[len("st_emoji_view_"):]
+        doc = get_emoji_alias(alias)
+        if not doc:
+            await q.answer("⚠️ الرمز غير موجود.", show_alert=True); return
+        fb = doc.get("fallback", "⭐")
+        await q.edit_message_text(
+            f"🎨 *تفاصيل الرمز*\n\n"
+            f"الرمز: `:{alias}:`\n"
+            f"الإيموجي: {fb}\n"
+            f"الـ ID: `{doc.get('emoji_id', '')}`",
+            parse_mode="Markdown",
+            reply_markup=kb_emoji_alias_detail(alias)
+        )
+        return
+
+    if d.startswith("st_emoji_del_"):
+        alias = d[len("st_emoji_del_"):]
+        delete_emoji_alias(alias)
+        aliases = get_all_emoji_aliases()
+        await q.edit_message_text(
+            f"🗑 تم حذف `:{alias}:` بنجاح.\n\n"
+            f"🎨 *رموز الإيموجي المتحركة* ({len(aliases)})",
+            parse_mode="Markdown",
+            reply_markup=kb_emoji_aliases()
+        )
+        return
+
     # ── إعدادات AI ────────────────────────────────────────────────
     if d == "st_ai_settings":
         await q.edit_message_text(

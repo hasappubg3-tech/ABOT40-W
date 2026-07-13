@@ -1,6 +1,25 @@
 from .shared import *
 import html as _html
+import re as _re
 from telegram import InputMediaPhoto, InputMediaVideo, InputMediaDocument
+
+def resolve_emoji_aliases(text: str) -> str:
+    """يستبدل رموز :اسم: بـ custom emoji HTML tags للعرض بالنصوص."""
+    if not text or ':' not in text:
+        return text
+    try:
+        aliases = {a['alias']: a for a in get_all_emoji_aliases()}
+    except Exception:
+        return text
+    if not aliases:
+        return text
+    def _replace(m):
+        doc = aliases.get(m.group(1))
+        if not doc:
+            return m.group(0)
+        fb = _html.escape(doc['fallback'])
+        return f'<tg-emoji emoji-id="{doc["emoji_id"]}">{fb}</tg-emoji>'
+    return _re.sub(r':([^:\s:]+):', _replace, text)
 
 def detect_content(m):
     if m.photo:
@@ -144,7 +163,10 @@ async def send_file_item(target, item, reply_markup=None, extra_caption="", bot=
         return msg
 
     if t == "text":
-        bold_cap = f"<b>{_html.escape(cap)}</b>" if cap else cap
+        # 1) HTML-escape النص أولاً، ثم 2) استبدل :رموز: بالإيموجي المتحرك، ثم 3) عريض
+        escaped = _html.escape(cap) if cap else ""
+        resolved = resolve_emoji_aliases(escaped)
+        bold_cap = f"<b>{resolved}</b>" if resolved else resolved
         try:
             return await target.reply_text(
                 bold_cap, parse_mode="HTML",
