@@ -2229,10 +2229,28 @@ async def on_message(update: Update, ctx):
                         restore_exam_progress(uid, topic["id"], sess.get("old_progress", {}))
             b = get_btn(pid); new_pid = b["parent_id"] if b else None
             ctx.user_data["pid"] = new_pid
-            await m.reply_text(".", reply_markup=build_kb(uid, new_pid))
+            # إرسال اسم القسم بإيموجي متحرك عبر Pyrogram إن أمكن
+            _nav_label = b['label'] if 'b' in dir() else '.'
+            try:
+                from bot.pyro_sender import send_animated as _sa
+                _nav_kb = build_kb(uid, new_pid)
+                _nav_sent = await _sa(m.chat.id, _nav_label, reply_markup=_nav_kb)
+                if not _nav_sent:
+                    await m.reply_text('.', reply_markup=_nav_kb)
+            except Exception:
+                await m.reply_text('.', reply_markup=build_kb(uid, new_pid))
         else:
             ctx.user_data["pid"] = None
-            await m.reply_text(".", reply_markup=build_kb(uid, None))
+            # إرسال اسم القسم بإيموجي متحرك عبر Pyrogram إن أمكن
+            _nav_label = b['label'] if 'b' in dir() else '.'
+            try:
+                from bot.pyro_sender import send_animated as _sa
+                _nav_kb = build_kb(uid, None)
+                _nav_sent = await _sa(m.chat.id, _nav_label, reply_markup=_nav_kb)
+                if not _nav_sent:
+                    await m.reply_text('.', reply_markup=_nav_kb)
+            except Exception:
+                await m.reply_text('.', reply_markup=build_kb(uid, None))
         return
 
     # ── حماية الكويز: منع التنقل أثناء الاختبار (للمستخدمين فقط) ──
@@ -2380,7 +2398,16 @@ async def on_message(update: Update, ctx):
     if not matched:
         # النص لا يطابق أي زر في القائمة الحالية
         # → نعيد إظهار الكيبورد في حال كان مخفياً ونتجاهل النص
-        await m.reply_text(".", reply_markup=build_kb(uid, pid))
+        # إرسال اسم القسم بإيموجي متحرك عبر Pyrogram إن أمكن
+        _nav_label = b['label'] if 'b' in dir() else '.'
+        try:
+            from bot.pyro_sender import send_animated as _sa
+            _nav_kb = build_kb(uid, pid)
+            _nav_sent = await _sa(m.chat.id, _nav_label, reply_markup=_nav_kb)
+            if not _nav_sent:
+                await m.reply_text('.', reply_markup=_nav_kb)
+        except Exception:
+            await m.reply_text('.', reply_markup=build_kb(uid, pid))
         return
 
     b = matched
@@ -2393,7 +2420,16 @@ async def on_message(update: Update, ctx):
 
     if b["type"] == "menu":
         ctx.user_data["pid"] = b["id"]
-        await m.reply_text(".", reply_markup=build_kb(uid, b["id"]))
+        # إرسال اسم القسم بإيموجي متحرك عبر Pyrogram إن أمكن
+        _nav_label = b['label'] if 'b' in dir() else '.'
+        try:
+            from bot.pyro_sender import send_animated as _sa
+            _nav_kb = build_kb(uid, b["id"])
+            _nav_sent = await _sa(m.chat.id, _nav_label, reply_markup=_nav_kb)
+            if not _nav_sent:
+                await m.reply_text('.', reply_markup=_nav_kb)
+        except Exception:
+            await m.reply_text('.', reply_markup=build_kb(uid, b["id"]))
         if is_admin(uid):
             await set_panel(ctx, chat_id, f"{btn_id_header(b['id'])}📂 *{b['label']}*", kb_menu_quick(b["id"]))
 
@@ -2442,7 +2478,16 @@ async def on_message(update: Update, ctx):
     elif b["type"] == "exam_group":
         if is_admin(uid):
             ctx.user_data["pid"] = b["id"]
-            await m.reply_text(".", reply_markup=build_kb(uid, b["id"]))
+            # إرسال اسم القسم بإيموجي متحرك عبر Pyrogram إن أمكن
+            _nav_label = b['label'] if 'b' in dir() else '.'
+            try:
+                from bot.pyro_sender import send_animated as _sa
+                _nav_kb = build_kb(uid, b["id"])
+                _nav_sent = await _sa(m.chat.id, _nav_label, reply_markup=_nav_kb)
+                if not _nav_sent:
+                    await m.reply_text('.', reply_markup=_nav_kb)
+            except Exception:
+                await m.reply_text('.', reply_markup=build_kb(uid, b["id"]))
             await set_panel(ctx, chat_id,
                             f"{btn_id_header(b['id'])}🎓 *{b['label']}*\n_زر امتحان رئيسي — أضف داخله أزرار اختبار كمواضيع._",
                             kb_exam_group_quick(b["id"]))
@@ -2473,7 +2518,16 @@ async def on_message(update: Update, ctx):
         action = b.get("special_action")
         if action == "container":
             ctx.user_data["pid"] = b["id"]
-            await m.reply_text(".", reply_markup=build_kb(uid, b["id"]))
+            # إرسال اسم القسم بإيموجي متحرك عبر Pyrogram إن أمكن
+            _nav_label = b['label'] if 'b' in dir() else '.'
+            try:
+                from bot.pyro_sender import send_animated as _sa
+                _nav_kb = build_kb(uid, b["id"])
+                _nav_sent = await _sa(m.chat.id, _nav_label, reply_markup=_nav_kb)
+                if not _nav_sent:
+                    await m.reply_text('.', reply_markup=_nav_kb)
+            except Exception:
+                await m.reply_text('.', reply_markup=build_kb(uid, b["id"]))
             if is_admin(uid):
                 await set_panel(ctx, chat_id,
                                 f"{btn_id_header(b['id'])}⭐ *{b['label']}*\n_حاوية_",

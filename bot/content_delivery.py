@@ -188,7 +188,27 @@ async def send_file_item(target, item, reply_markup=None, extra_caption="", bot=
         return msg
 
     if t == "text":
-        # 1) HTML-escape النص أولاً، ثم 2) استبدل :رموز: بالإيموجي المتحرك، ثم 3) عريض
+        # أولاً: جرّب Pyrogram للإيموجي المتحرك (MTProto)
+        try:
+            from .pyro_sender import send_animated as _pyro_send
+            _pyro_ok = await _pyro_send(
+                target.chat.id, cap or "",
+                bold=True,
+                reply_markup=None,
+            )
+        except Exception:
+            _pyro_ok = False
+
+        if _pyro_ok:
+            # أُرسل عبر Pyrogram — أضف reply_markup منفصلاً إن وُجد
+            if reply_markup:
+                try:
+                    await target.reply_text("\u200b", reply_markup=reply_markup)
+                except Exception:
+                    pass
+            return None
+
+        # احتياطي: Bot API + HTML (يدعم <tg-emoji> أيضاً)
         escaped = _html.escape(cap) if cap else ""
         resolved = resolve_emoji_aliases(escaped)
         bold_cap = f"<b>{resolved}</b>" if resolved else resolved

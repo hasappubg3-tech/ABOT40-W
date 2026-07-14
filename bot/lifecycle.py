@@ -86,3 +86,10 @@ async def post_init(app):
     logging.info("تم التحقق من استئناف الجلسات النشطة.")
     init_ai_semaphore()
     logging.info("تم تهيئة طابور طلبات AI.")
+    # تشغيل Pyrogram للإيموجي المتحرك
+    try:
+        from bot.pyro_sender import start_pyro
+        import asyncio
+        asyncio.create_task(start_pyro())
+    except Exception as _pe:
+        logging.warning(f"Pyrogram init skipped: {_pe}")
