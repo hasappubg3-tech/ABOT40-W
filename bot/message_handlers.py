@@ -364,6 +364,8 @@ async def on_message(update: Update, ctx):
                         continue
                     try:
                         save_emoji_alias(_fb, _eid, _fb, uid)
+                        from bot.keyboards import invalidate_kb_emoji_cache
+                        invalidate_kb_emoji_cache()
                     except Exception:
                         pass
 
@@ -1398,6 +1400,11 @@ async def on_message(update: Update, ctx):
         if not pending:
             ctx.user_data.pop("state", None); return
         save_emoji_alias(alias, pending["emoji_id"], pending["fallback"], uid)
+        try:
+            from bot.keyboards import invalidate_kb_emoji_cache
+            invalidate_kb_emoji_cache()
+        except Exception:
+            pass
         queue = ctx.user_data.get("pending_emoji_queue", [])
         if queue:
             nxt = queue.pop(0)

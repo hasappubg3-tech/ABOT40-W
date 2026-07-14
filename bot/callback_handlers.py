@@ -1546,6 +1546,11 @@ async def cb_manage(update: Update, ctx):
     if d.startswith("st_emoji_del_"):
         alias = d[len("st_emoji_del_"):]
         delete_emoji_alias(alias)
+        try:
+            from bot.keyboards import invalidate_kb_emoji_cache
+            invalidate_kb_emoji_cache()
+        except Exception:
+            pass
         aliases = get_all_emoji_aliases()
         await q.edit_message_text(
             f"🗑 تم حذف `:{alias}:` بنجاح.\n\n"

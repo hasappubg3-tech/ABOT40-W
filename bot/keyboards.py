@@ -1,5 +1,39 @@
 import re as _re
+import time as _ktime
 from .shared import *
+
+# ── Cache للإيموجي المخصصة (لتجنب استعلام MongoDB في كل بناء keyboard) ──
+_emoji_cache: dict = {}   # {fallback_char: emoji_id}
+_emoji_cache_ts: float = 0.0
+_EMOJI_CACHE_TTL = 60     # ثانية
+
+def _refresh_emoji_cache():
+    global _emoji_cache, _emoji_cache_ts
+    try:
+        from .data_access import get_all_emoji_aliases
+        aliases = get_all_emoji_aliases()
+        _emoji_cache = {
+            a["alias"]: a["emoji_id"]
+            for a in aliases
+            if a.get("alias") and a.get("emoji_id")
+        }
+    except Exception:
+        pass
+    _emoji_cache_ts = _ktime.time()
+
+def invalidate_kb_emoji_cache():
+    """استدعِ هذه الدالة بعد حفظ أو حذف إيموجي لتحديث الـ cache فوراً."""
+    global _emoji_cache_ts
+    _emoji_cache_ts = 0.0
+
+def _kb_emoji_id(label: str):
+    """يُرجع emoji_id أول إيموجي محفوظ موجود في الـ label، أو None."""
+    if _ktime.time() - _emoji_cache_ts > _EMOJI_CACHE_TTL:
+        _refresh_emoji_cache()
+    for char, eid in _emoji_cache.items():
+        if char in label:
+            return eid
+    return None
 
 # ── ترتيب تلقائي حسب السنة والنوع للأزرار المدمجة ──────────────────
 _YEAR_RE = _re.compile(r'20\d{2}')
@@ -119,7 +153,9 @@ def build_kb(uid, pid=None):
                 label = f"🟢{label}🟢"
             else:
                 label = f"🟡{label}🟡"
-        current_row.append(KeyboardButton(label + _encode_bid(b['id'])))
+        _eid = _kb_emoji_id(b['label'])
+        _btn_kw = {"api_kwargs": {"icon_custom_emoji_id": _eid}} if _eid else {}
+        current_row.append(KeyboardButton(label + _encode_bid(b['id']), **_btn_kw))
         last_bid_in_row = b['id']
     if current_row:
         if admin and last_bid_in_row is not None:
