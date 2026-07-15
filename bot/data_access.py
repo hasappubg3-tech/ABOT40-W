@@ -1398,7 +1398,7 @@ def set_work_mode(active: bool):
 
 def create_work_snapshot():
     """ينسخ buttons و content_items إلى مجموعات snapshot — يُجمّد ما يراه المستخدمون."""
-    db = mdb
+    db = get_mongo_db()
     db["buttons_snapshot"].drop()
     db["content_items_snapshot"].drop()
     btns = list(db["buttons"].find({}))
@@ -1410,7 +1410,7 @@ def create_work_snapshot():
 
 def restore_work_snapshot():
     """يستعيد الـ snapshot إلى المجموعات الحية ثم يحذفه."""
-    db = mdb
+    db = get_mongo_db()
     btns = list(db["buttons_snapshot"].find({}))
     db["buttons"].delete_many({})
     if btns:
@@ -1423,8 +1423,9 @@ def restore_work_snapshot():
 
 def drop_work_snapshot():
     """يحذف مجموعات الـ snapshot."""
-    mdb["buttons_snapshot"].drop()
-    mdb["content_items_snapshot"].drop()
+    db = get_mongo_db()
+    db["buttons_snapshot"].drop()
+    db["content_items_snapshot"].drop()
 
 def get_buttons_user(pid=None):
     """يجلب الأزرار للمستخدم العادي — من الـ snapshot إذا كان وضع العمل مفعّلاً."""
