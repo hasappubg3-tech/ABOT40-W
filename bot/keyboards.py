@@ -155,9 +155,7 @@ def build_kb(uid, pid=None):
                 label = f"🟢{label}🟢"
             else:
                 label = f"🟡{label}🟡"
-        _eid = _kb_emoji_id(b['label'])
-        _btn_kw = {"api_kwargs": {"icon_custom_emoji_id": _eid}} if _eid else {}
-        current_row.append(KeyboardButton(label + _encode_bid(b['id']), **_btn_kw))
+        current_row.append(KeyboardButton(label + _encode_bid(b['id'])))
         last_bid_in_row = b['id']
     if current_row:
         if admin and last_bid_in_row is not None:
