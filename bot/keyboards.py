@@ -42,6 +42,36 @@ def _strip_known_emojis(label: str) -> str:
         result = result.replace(char, "")
     return result.strip()
 
+
+def _inline_btn(label: str, label_emojis, **kwargs) -> InlineKeyboardButton:
+    """
+    ينشئ InlineKeyboardButton مع دعم الإيموجي المخصص تماماً كـ build_kb().
+    label_emojis: None=قديم (استخدم القاموس العام), {}=عادي, {char:id}=مخصص.
+    kwargs: تُمرَّر مباشرةً لـ InlineKeyboardButton (callback_data, url …).
+    """
+    if _ktime.time() - _emoji_cache_ts > _EMOJI_CACHE_TTL:
+        _refresh_emoji_cache()
+
+    if label_emojis is None:
+        # زر قديم بدون label_emojis → استخدم القاموس العام
+        _eid = _kb_emoji_id(label)
+        if _eid:
+            display = _strip_known_emojis(label)
+            return InlineKeyboardButton(display, api_kwargs={"icon_custom_emoji_id": _eid}, **kwargs)
+        return InlineKeyboardButton(label, **kwargs)
+
+    if label_emojis:
+        # إيموجيات مخصصة محددة لهذا الزر تحديداً
+        _eid = next(iter(label_emojis.values()))
+        display = label
+        for _ch in label_emojis:
+            display = display.replace(_ch, "")
+        display = display.strip()
+        return InlineKeyboardButton(display, api_kwargs={"icon_custom_emoji_id": _eid}, **kwargs)
+
+    # label_emojis == {} → إيموجي عادي فقط، لا أيقونة مخصصة
+    return InlineKeyboardButton(label, **kwargs)
+
 # ── ترتيب تلقائي حسب السنة والنوع للأزرار المدمجة ──────────────────
 _YEAR_RE = _re.compile(r'20\d{2}')
 
@@ -605,7 +635,8 @@ def kb_compound_user(bid):
         rows = []
         current_row = []
         for ch in sorted_visible:
-            btn = InlineKeyboardButton(ch["label"], callback_data=f"cmp_open_{ch['id']}")
+            btn = _inline_btn(ch["label"], ch.get("label_emojis"),
+                              callback_data=f"cmp_open_{ch['id']}")
             if ch['_sorted_new_row'] and current_row:
                 rows.append(current_row); current_row = []
             current_row.append(btn)
@@ -615,7 +646,8 @@ def kb_compound_user(bid):
         rows = []
         current_row = []
         for i, ch in enumerate(visible):
-            btn = InlineKeyboardButton(ch["label"], callback_data=f"cmp_open_{ch['id']}")
+            btn = _inline_btn(ch["label"], ch.get("label_emojis"),
+                              callback_data=f"cmp_open_{ch['id']}")
             if i > 0 and ch.get("new_row", 1) and current_row:
                 rows.append(current_row); current_row = []
             current_row.append(btn)
