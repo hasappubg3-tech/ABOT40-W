@@ -2318,6 +2318,10 @@ async def on_message(update: Update, ctx):
                         sess = ctx.user_data.pop(sess_key)
                         restore_exam_progress(uid, topic["id"], sess.get("old_progress", {}))
             b = get_btn(pid); new_pid = b["parent_id"] if b else None
+            # مسح فلتر الملازم عند الرجوع من قائمة المادة
+            from bot.keyboards import set_mlz_filter as _smf_back, _is_mlazm_subject as _ims_back
+            if _ims_back(pid):
+                _smf_back(uid, pid, None)
             ctx.user_data["pid"] = new_pid
             # إرسال اسم القسم بإيموجي متحرك عبر Pyrogram إن أمكن
             _nav_label = b['label'] if b else '.'
@@ -2389,6 +2393,9 @@ async def on_message(update: Update, ctx):
                     if sess_key in ctx.user_data:
                         sess = ctx.user_data.pop(sess_key)
                         restore_exam_progress(uid, topic["id"], sess.get("old_progress", {}))
+        # مسح جميع فلاتر الملازم عند العودة للرئيسية
+        from bot.keyboards import clear_mlz_filters_for_user as _clf_home
+        _clf_home(uid)
         ctx.user_data["pid"] = None
         start_msg = get_start_message()
         await m.reply_text(start_msg, reply_markup=build_kb(uid, None))
@@ -2460,6 +2467,28 @@ async def on_message(update: Update, ctx):
         if text == BTN_SETTINGS:
             await set_panel(ctx, chat_id, "⚙️ *الاعدادات*", kb_settings())
             return
+
+    # ── فلتر البحث للملازم ──────────────────────────────────────────────
+    if text == BTN_MLZ_FILTER and not is_admin(uid) and not state:
+        from bot.keyboards import get_mlz_filter_options as _gfo, get_mlz_filter as _gmf
+        options = _gfo(pid)
+        active  = _gmf(uid, pid)
+        if not options:
+            await m.reply_text("⚠️ لا توجد أنواع ملفات في هذه المادة.")
+            return
+        rows_f = []
+        for opt in options:
+            mark = " ✅" if opt == active else ""
+            rows_f.append([InlineKeyboardButton(f"{opt}{mark}", callback_data=f"mlzf_{pid}_{opt}")])
+        if active:
+            rows_f.append([InlineKeyboardButton("❌ إلغاء الفلتر", callback_data=f"mlzf_{pid}_reset")])
+        status_line = f"الفلتر الحالي: *{active}*" if active else "اختر نوع الملزمة الذي تريد عرضه:"
+        await m.reply_text(
+            f"🔍 *فلتر البحث*\n\n{status_line}",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(rows_f)
+        )
+        return
 
     # ── ضغط زر من القائمة ─────────────────────────────────────────
     # تنظيف علامات الحالة ✅/❌ (أزرار الامتحانات) و🔴🟡🟢 (أزرار الكويز الملوّنة)

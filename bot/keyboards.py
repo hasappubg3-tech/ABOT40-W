@@ -121,6 +121,61 @@ def _sort_alpha_children(children: list) -> list:
         result.append(ch_copy)
     return result
 
+
+# ── فلتر الملازم ──────────────────────────────────────────────────────────
+_mlz_filters: dict = {}  # (uid, pid) → كلمة الفلتر النشط
+
+def get_mlz_filter(uid: int, pid: int):
+    """يُرجع الفلتر النشط لهذا المستخدم في هذه القائمة، أو None."""
+    return _mlz_filters.get((uid, pid))
+
+def set_mlz_filter(uid: int, pid: int, word):
+    """يضبط أو يمسح الفلتر لهذا المستخدم في هذه القائمة."""
+    if word:
+        _mlz_filters[(uid, pid)] = word
+    else:
+        _mlz_filters.pop((uid, pid), None)
+
+def clear_mlz_filters_for_user(uid: int):
+    """يمسح جميع فلاتر الملازم لهذا المستخدم (مثلاً عند الضغط على الرئيسية)."""
+    for k in list(_mlz_filters.keys()):
+        if k[0] == uid:
+            del _mlz_filters[k]
+
+def _is_mlazm_subject(pid) -> bool:
+    """هل القائمة الحالية عبارة عن مادة داخل قائمة ملازم؟
+    الشرط: الوالد يحتوي كلمة 'ملازم' في اسمه."""
+    if pid is None:
+        return False
+    try:
+        parent = get_btn(pid)
+        return parent is not None and "ملازم" in parent.get("label", "")
+    except Exception:
+        return False
+
+_ARABIC_WORD_RE = _re.compile(r'[\u0600-\u06FF]+')
+
+def _extract_file_type(label: str) -> str:
+    """أول كلمة عربية في اسم الملف = نوعه (ملزمة / وزاريات / واجبات …)."""
+    words = _ARABIC_WORD_RE.findall(label)
+    return words[0] if words else ""
+
+def get_mlz_filter_options(pid: int) -> list:
+    """يجمع أنواع الملفات المتاحة من جميع المدرسين (compound) في هذه المادة."""
+    try:
+        teachers = get_buttons(pid)
+        types: set = set()
+        for t in teachers:
+            if t.get("type") == "compound":
+                for f in get_buttons(t["id"]):
+                    if f.get("type") == "content":
+                        ft = _extract_file_type(f.get("label", ""))
+                        if ft:
+                            types.add(ft)
+        return sorted(types)
+    except Exception:
+        return []
+
 def _btn_visible_for_user(b):
     """هل يُعرض هذا الزر للمستخدم العادي؟ لا إذا كان مخفياً يدوياً أو فارغاً تلقائياً."""
     if b.get("hidden", 0):
@@ -169,6 +224,23 @@ def build_kb(uid, pid=None):
     parent_b = get_btn(pid) if pid is not None else None
     if parent_b and parent_b.get("sort_alpha", 0) and btns:
         btns = _sort_alpha_children(btns)
+
+    # ── فلتر الملازم: تصفية المدرسين حسب نوع الملف المختار ─────────────
+    _show_mlz_filter_btn = False
+    if not admin and _is_mlazm_subject(pid):
+        _show_mlz_filter_btn = True
+        _active_filter = get_mlz_filter(uid, pid)
+        if _active_filter:
+            _filtered = []
+            for _b in btns:
+                if _b.get("type") != "compound":
+                    _filtered.append(_b)
+                else:
+                    _files = get_buttons(_b["id"])
+                    if any(_extract_file_type(_f.get("label", "")) == _active_filter
+                           for _f in _files if _f.get("type") == "content"):
+                        _filtered.append(_b)
+            btns = _filtered
     rows = []
     current_row = []
     last_bid_in_row = None
@@ -221,6 +293,11 @@ def build_kb(uid, pid=None):
         if admin and last_bid_in_row is not None:
             current_row.append(KeyboardButton(_plus_label(last_bid_in_row)))
         rows.append(current_row)
+
+    # ── فلتر الملازم: أضف زر الفلتر في أعلى القائمة (بمفرده) ─────────────
+    if _show_mlz_filter_btn:
+        rows.insert(0, [KeyboardButton(BTN_MLZ_FILTER)])
+
     if admin and not btns:
         rows.append([KeyboardButton(BTN_PLUS)])
     if admin:

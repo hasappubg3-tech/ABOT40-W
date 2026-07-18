@@ -1416,6 +1416,63 @@ async def cb_manage(update: Update, ctx):
         await send_items(q.message, child_bid, uid=uid, bot=ctx.bot)
         return
 
+    # ── فلتر الملازم (للمستخدم العادي) ─────────────────────────────
+    if d.startswith("mlzf_") and not is_admin(uid):
+        await q.answer()
+        # صيغة البيانات: mlzf_{pid}_{word}  أو  mlzf_{pid}_reset
+        rest = d[len("mlzf_"):]
+        sep = rest.find("_")
+        if sep == -1:
+            return
+        try:
+            filter_pid = int(rest[:sep])
+        except ValueError:
+            return
+        word = rest[sep + 1:]
+
+        from bot.keyboards import (set_mlz_filter as _smf,
+                                   get_mlz_filter as _gmf,
+                                   get_mlz_filter_options as _gfo,
+                                   build_kb as _bkb)
+
+        if word == "reset":
+            _smf(uid, filter_pid, None)
+            status_line = "❌ تم إلغاء الفلتر — تظهر جميع المدرسين الآن."
+        else:
+            _smf(uid, filter_pid, word)
+            status_line = f"✅ الفلتر النشط: *{word}*"
+
+        # تحديث رسالة الفلتر بالخيارات المحدّثة
+        options = _gfo(filter_pid)
+        active  = _gmf(uid, filter_pid)
+        rows_f  = []
+        for opt in options:
+            mark = " ✅" if opt == active else ""
+            rows_f.append([InlineKeyboardButton(f"{opt}{mark}",
+                                                callback_data=f"mlzf_{filter_pid}_{opt}")])
+        if active:
+            rows_f.append([InlineKeyboardButton("❌ إلغاء الفلتر",
+                                                callback_data=f"mlzf_{filter_pid}_reset")])
+        try:
+            await q.edit_message_text(
+                f"🔍 *فلتر البحث*\n\n{status_line}",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(rows_f) if rows_f else None
+            )
+        except Exception:
+            pass
+
+        # إرسال كيبورد محدّث بعد تطبيق الفلتر
+        try:
+            await ctx.bot.send_message(
+                chat_id=q.message.chat_id,
+                text=".",
+                reply_markup=_bkb(uid, filter_pid)
+            )
+        except Exception:
+            pass
+        return
+
     await q.answer()
     if not is_admin(uid): return
     chat_id = q.message.chat_id
