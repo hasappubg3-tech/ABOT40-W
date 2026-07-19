@@ -9,6 +9,19 @@ async def cb_manage(update: Update, ctx):
         await q.answer("⏳ أبطئ قليلاً!", show_alert=False)
         return
 
+    # ── إلغاء تلقائي لأي عملية نصية معلّقة عند الضغط على أي زر ────
+    if ctx.user_data.pop("state", None):
+        for _aux_key in (
+            "comment_target_type", "comment_target_id",
+            "gc_subject_idx", "gc_step", "gc_grades",
+            "cd_edit_id", "fu_thanks_bid", "bcast_filter",
+            "phrase_edit_id", "capbtn_edit_mid", "capbtn_bid",
+            "maintenance_bid", "qab_grade_row", "quiz_ai_bid",
+            "ai_chat_bid", "mlz_new_btn_bid", "ses_create_pending",
+            "file_request_bid",
+        ):
+            ctx.user_data.pop(_aux_key, None)
+
     # ── معالجة تنبيهات الاشتراك (لجميع المستخدمين) ───────────────
     if (d.startswith("notif_ok_")      or d.startswith("notif_skip_")
             or d.startswith("notif_decline_") or d.startswith("notif_anger_")

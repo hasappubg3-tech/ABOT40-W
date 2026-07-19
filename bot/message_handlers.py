@@ -357,6 +357,24 @@ async def on_message(update: Update, ctx):
     if not is_admin(uid) and not check_rate_limit(uid, 'msg'):
         return
 
+    # ── إلغاء تلقائي: إذا كان البوت ينتظر إدخالاً نصياً وضغط المستخدم زراً ─
+    # (لا يشمل الرسائل التي تحتوي على وسائط، لأن بعض الحالات تنتظر ملفات)
+    if (state
+            and not (m.document or m.photo or m.video or m.audio or m.voice)
+            and is_bot_button_text(text, pid)):
+        ctx.user_data.pop("state", None)
+        for _aux_key in (
+            "comment_target_type", "comment_target_id",
+            "gc_subject_idx", "gc_step", "gc_grades",
+            "cd_edit_id", "fu_thanks_bid", "bcast_filter",
+            "phrase_edit_id", "capbtn_edit_mid", "capbtn_bid",
+            "maintenance_bid", "qab_grade_row", "quiz_ai_bid",
+            "ai_chat_bid", "mlz_new_btn_bid", "ses_create_pending",
+            "file_request_bid",
+        ):
+            ctx.user_data.pop(_aux_key, None)
+        state = None
+
     # ── حفظ إيموجي متحرك تلقائياً (للمشرفين — في أي حالة، بصمت) ──
     if is_admin(uid) and state != "wait_emoji_num":
         _all_ents = list(m.entities or []) + list(m.caption_entities or [])
