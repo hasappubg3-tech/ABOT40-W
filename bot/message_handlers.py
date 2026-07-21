@@ -204,6 +204,16 @@ async def cmd_start(update: Update, ctx):
         challenge_id = ctx.args[0][3:]
         await handle_challenge_invite(update, ctx, challenge_id)
         return
+    # معالجة رابط الملزمة من الموقع /start btn_<bid>
+    if ctx.args and ctx.args[0].startswith("btn_"):
+        try:
+            bid = int(ctx.args[0][4:])
+            b = get_btn(bid)
+            if b and b.get("type") == "content":
+                await send_items(update.message, bid, uid=uid, bot=ctx.bot)
+                return
+        except (ValueError, TypeError):
+            pass
     ctx.user_data.clear()
     kb = build_kb(uid)
     start_msg = get_start_message()
