@@ -18,7 +18,7 @@
   <meta name="twitter:description" content="{{ og_description | default('مكتبة ملازم وكتب دراسية مجانية') }}">
   {% if og_image %}<meta name="twitter:image" content="{{ og_image }}">{% endif %}
 
-  <title>{% block title %}{{ og_title | default('شبكة الامير التعليمية') }}{% endblock %}</title>
+  <title>{{ title | default(og_title) | default('شبكة الامير التعليمية') }}</title>
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
