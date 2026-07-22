@@ -151,7 +151,7 @@ def _is_new(btn: dict) -> bool:
 def _has_content_media(bid: int) -> bool:
     """هل يوجد صورة أو PDF لهذا الزر؟"""
     return bool(_col("content_items").find_one(
-        {"button_id": bid, "type": {"$in": ["photo", "document"]}}
+        {"button_id": bid, "type": {"$in": ["photo", "document", "file"]}}
     ))
 
 
@@ -166,9 +166,9 @@ def _pdf_thumbnail(bid: int) -> bytes | None:
                 return f.read()
     except OSError:
         pass
-    # ابحث عن ملف PDF
+    # ابحث عن ملف PDF (النوع قد يكون "document" أو "file")
     item = _col("content_items").find_one(
-        {"button_id": bid, "type": "document"},
+        {"button_id": bid, "type": {"$in": ["document", "file"]}},
         sort=[("ord", 1), ("id", 1)]
     )
     if not item or not item.get("file_id"):
